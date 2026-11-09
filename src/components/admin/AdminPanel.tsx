@@ -356,7 +356,7 @@ export const AdminPanel: React.FC = () => {
 
   const menu: { id: Tab; name: string; icon: React.ElementType; count?: number }[] = [
     { id: 'overview', name: 'Resumen', icon: LayoutDashboard },
-    { id: 'owners', name: 'Propietarios', icon: Users, count: ownerRows.length },
+    { id: 'owners', name: 'Usuarios y propietarios', icon: Users, count: Math.max(ownerRows.length, firebaseUsers.length) },
     { id: 'alerts', name: 'Moderación', icon: ShieldAlert, count: flaggedProperties.length },
     { id: 'reviews', name: 'Reseñas', icon: Star, count: pendingReviews.length },
     { id: 'invoices', name: 'Facturas', icon: FileText, count: invoices.length },
