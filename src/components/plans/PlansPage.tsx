@@ -11,7 +11,7 @@ import { formatGs } from '../../utils/formatters';
 import { PublicationPolicyCompact } from '../policy/PublicationPolicy';
 import {
   type BillingProfile, type PaymentMethod, loadBillingProfile, saveBillingProfile, validateBilling,
-  newPaymentRequest, savePaymentRequest, completeDemoPayment, validateCardFormat,
+  newPaymentRequest, savePaymentRequest, completeDemoPayment, validateDemoCard,
   saveDemoCardReference, readDemoSavedCard,
 } from '../../services/billing';
 import { createDemoInvoice, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
@@ -20,6 +20,24 @@ import { downloadQr, makeQrSvg } from '../../services/qrCode';
 
 const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100';
 const labelClass = 'block text-xs font-bold text-slate-700';
+/** Identificación visual únicamente. No autentica ni procesa una tarjeta. */
+function demoCardBrand(number: string): string {
+  const digits = number.replace(/\D/g, '');
+  if (/^4/.test(digits)) return 'Visa';
+  if (/^5[1-5]/.test(digits) || /^(222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)/.test(digits)) return 'Mastercard';
+  if (/^3[47]/.test(digits)) return 'American Express';
+  return digits ? 'Otra tarjeta' : 'Tipo de tarjeta';
+}
+function formatDemoCardNumber(value: string): string {
+  const digits=value.replace(/\D/g,'').slice(0,19);
+  return /^3[47]/.test(digits)
+    ? [digits.slice(0,4),digits.slice(4,10),digits.slice(10,15)].filter(Boolean).join(' ')
+    : digits.replace(/(.{4})/g,'$1 ').trim();
+}
+function formatDemoExpiry(value: string): string {
+  const digits=value.replace(/\D/g,'').slice(0,4);
+  return digits.length<=2 ? digits : `${digits.slice(0,2)}/${digits.slice(2)}`;
+}
 const emptyProfile: BillingProfile = { fullName: '', email: '', phone: '', invoiceRequested: false, taxName: '', ruc: '', address: '', autoRenew: false };
 
 type QrSession = { token: string; ownerId: string; reference: string };
@@ -166,7 +184,7 @@ export const PlansPage: React.FC = () => {
       // El aviso queda como borrador para administración; solo SMTP confirma envío real.
       preparePlanMail(completed, invoice);
       if (chosenMethod === 'card' && cardMode === 'once' && rememberCard) {
-        saveDemoCardReference(currentUser.id, cardNumber.replace(/\D/g, '').slice(-4));
+        saveDemoCardReference(currentUser.id, cardNumber.replace(/\D/g, '').slice(-4), demoCardBrand(cardNumber));
       }
       // Limpiar inmediatamente las entradas sensibles tras la operación.
       setCardNumber(''); setExpiry(''); setSecurityCode(''); setCardholder('');
@@ -182,7 +200,7 @@ export const PlansPage: React.FC = () => {
     if (cardMode === 'saved' && !savedCard) { setError('No hay una tarjeta guardada.'); return; }
     if (cardMode === 'once') {
       if (cardholder.trim().length < 4) { setError('Ingresá el nombre completo del titular de la tarjeta.'); return; }
-      const cardIssue = validateCardFormat(cardNumber, expiry, securityCode);
+      const cardIssue = validateDemoCard(cardNumber, expiry, securityCode);
       if (cardIssue) { setError(cardIssue); return; }
     } else if (!/^\d{3,4}$/.test(securityCode)) {
       setError('Ingresá el código de seguridad de la tarjeta.'); return;
@@ -321,9 +339,14 @@ export const PlansPage: React.FC = () => {
                   </div>
                   {cardMode === 'once' ? <>
                     <label className={labelClass}>Titular de la tarjeta *<input className={inputClass} value={cardholder} onChange={(event) => setCardholder(event.target.value)} autoComplete="off" placeholder="Nombre y apellido" /></label>
-                    <label className={labelClass}>Número de tarjeta *<input className={inputClass} value={cardNumber} onChange={(event) => setCardNumber(event.target.value.replace(/[^0-9 ]/g, '').slice(0, 23))} inputMode="numeric" autoComplete="off" placeholder="Número de tarjeta" /></label>
+                    <label className={labelClass}>Número de tarjeta *
+                      <div className="relative">
+                        <input className={`${inputClass} pr-32`} value={cardNumber} onChange={(event) => setCardNumber(formatDemoCardNumber(event.target.value))} inputMode="numeric" autoComplete="off" placeholder="0000 0000 0000 0000" maxLength={23} />
+                        <span aria-live="polite" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-sky-50 px-2 py-1 text-[11px] font-black text-sky-700">{demoCardBrand(cardNumber)}</span>
+                      </div>
+                    </label>
                     <div className="grid grid-cols-2 gap-3">
-                      <label className={labelClass}>Vencimiento (MM/AA) *<input className={inputClass} value={expiry} onChange={(event) => setExpiry(event.target.value.replace(/[^0-9/]/g, '').slice(0, 5))} autoComplete="off" placeholder="MM/AA"/></label>
+                      <label className={labelClass}>Vencimiento (MM/AA) *<input className={inputClass} value={expiry} onChange={(event) => setExpiry(formatDemoExpiry(event.target.value))} autoComplete="off" placeholder="MM/AA"/></label>
                       <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
                     </div>
                     <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" checked={rememberCard} onChange={(event) => setRememberCard(event.target.checked)}/><span>Recordar la tarjeta para una próxima contratación (solo sus últimos cuatro dígitos).</span></label>
@@ -331,7 +354,7 @@ export const PlansPage: React.FC = () => {
                     <p className="rounded-xl bg-sky-50 p-3 text-sm font-semibold text-sky-900">{savedCard?.brand} •••• {savedCard?.last4}</p>
                     <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
                   </>}
-                  <p className="text-[11px] leading-5 text-slate-500">No ingreses tarjetas reales hasta habilitar la entidad procesadora. Los datos de la tarjeta no se guardan.</p>
+                  <p className="rounded-xl bg-sky-50 p-3 text-[11px] leading-5 text-sky-900"><strong>Pago de demostración — sin cobro real.</strong> Usá únicamente números de prueba: Visa 4242 4242 4242 4242 o Mastercard 5555 5555 5555 4444. No ingreses tarjetas reales. El número, la fecha y el código de seguridad no se guardan ni se envían.</p>
                 </section> : <section className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
                   <h4 className="font-black text-slate-900">Pago mediante código QR</h4>
                   <p className="text-xs leading-5 text-slate-600">Generá el QR, descargalo o escanealo con tu teléfono. El enlace permitirá confirmar la solicitud de contratación.</p>
