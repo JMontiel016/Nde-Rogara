@@ -6,7 +6,7 @@ import { effectiveOwnerPlan, ownerHasProperty, readOwnerPlan, ownerMediaUsage, c
 import { socialShareLinks } from '../../services/socialLinks';
 import { formatGs } from '../../utils/formatters';
 import { getLocalMetrics } from '../../services/localMetrics';
-import { getLocalInvoices, viewFiscalInvoice, INVOICES_CHANGED } from '../../services/invoices';
+import { getLocalInvoices, fetchMyFiscalInvoices, viewFiscalInvoice, INVOICES_CHANGED, type FiscalInvoice } from '../../services/invoices';
 import { PrivateDocumentRecord, listPrivateDocuments, storePrivateDocument, removePrivateDocument, downloadPrivateDocument } from '../../services/privateDocuments';
 
 export const OwnerDashboard: React.FC = () => {
@@ -17,6 +17,8 @@ export const OwnerDashboard: React.FC = () => {
   const [planVersion, setPlanVersion] = useState(0);
   const [message,setMessage] = useState('');
   const [invoiceRevision,setInvoiceRevision] = useState(0);
+  const [cloudInvoices,setCloudInvoices] = useState<FiscalInvoice[]>([]);
+  const [cloudInvoiceError,setCloudInvoiceError] = useState('');
   const [receiptNotice,setReceiptNotice] = useState('');
   const [moderationClock,setModerationClock] = useState(Date.now());
   useEffect(()=>{const timer=window.setInterval(()=>setModerationClock(Date.now()),5000);return ()=>window.clearInterval(timer);},[]);
@@ -24,8 +26,16 @@ export const OwnerDashboard: React.FC = () => {
   useEffect(() => { const cb = () => setPlanVersion(v => v + 1); window.addEventListener('nderogara-plan-updated', cb); return () => window.removeEventListener('nderogara-plan-updated', cb); }, []);
   const plan = effectiveOwnerPlan(currentUser?.id);
   const selection = readOwnerPlan(currentUser?.id);
-  const myInvoices = getLocalInvoices().filter(inv=>inv.ownerId===currentUser?.id);
-  void invoiceRevision;
+  useEffect(()=>{
+    if(!currentUser?.id)return;
+    let active=true;
+    fetchMyFiscalInvoices(currentUser.id).then(rows=>{if(active){setCloudInvoices(rows);setCloudInvoiceError('');}})
+      .catch(e=>{if(active)setCloudInvoiceError(e instanceof Error?e.message:'No se pudieron consultar los comprobantes remotos.');});
+    return ()=>{active=false;};
+  },[currentUser?.id,invoiceRevision]);
+  const localInvoices=getLocalInvoices().filter(inv=>inv.ownerId===currentUser?.id);
+  const seen=new Set(cloudInvoices.map(inv=>inv.paymentId));
+  const myInvoices=[...cloudInvoices,...localInvoices.filter(inv=>!seen.has(inv.paymentId))];
   void planVersion;
   if (!currentUser || (userRole !== 'landlord' && userRole !== 'admin')) return <div className="max-w-xl mx-auto p-8">Iniciá sesión como propietario para administrar tus publicaciones.</div>;
   const myProperties = properties.filter(p => ownerHasProperty(p, currentUser));
