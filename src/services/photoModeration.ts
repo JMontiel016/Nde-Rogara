@@ -19,16 +19,27 @@ async function prepareLocalPendingPhoto(file: File): Promise<ImageDecision> {
     bitmap = await createImageBitmap(file);
     if (!bitmap.width || !bitmap.height) throw new Error('La imagen no contiene píxeles válidos.');
     const canvas = document.createElement('canvas');
-    const ratio = Math.min(1, 1100 / Math.max(bitmap.width, bitmap.height));
-    canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
-    canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+    // Reducir progresivamente para evitar errores de cuota de localStorage.
+    // Se guarda una miniatura de presentación, no el archivo original de 50 MB.
+    const maxSize = 190_000;
+    let side = 1050;
+    let quality = 0.67;
+    let url = '';
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo preparar la fotografía.');
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    // Al redibujar se eliminan metadatos EXIF, incluida la geolocalización privada.
-    const url = canvas.toDataURL('image/jpeg', 0.66);
-    if (url.length > 620_000) {
-      return { approved: false, reason: 'La fotografía ocupa demasiado espacio. Reducí la resolución para publicarla.' };
+    for (let pass = 0; pass < 6; pass++) {
+      const ratio = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
+      canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      // Al redibujar se eliminan metadatos EXIF, incluida la ubicación privada.
+      url = canvas.toDataURL('image/jpeg', quality);
+      if (url.length <= maxSize) break;
+      side = Math.round(side * 0.81);
+      quality = Math.max(0.38, quality - 0.08);
+    }
+    if (url.length > maxSize) {
+      return { approved: false, reason: 'La imagen es demasiado compleja para guardarla localmente. Probá con otra resolución.' };
     }
     return { approved: true, url, pendingManualReview: true };
   } catch {
