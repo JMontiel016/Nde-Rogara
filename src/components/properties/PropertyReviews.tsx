@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import type { Property, PropertyReview } from '../../types';
 import { checkReviewText } from '../../services/contentGuard';
 import { getVisitorId } from '../../services/reviewerIdentity';
+import { firebaseAuth } from '../../services/firebaseAuth';
 
 /** Las reseñas son anónimas para visitantes y vinculadas a la cuenta para registrados. */
 export const PropertyReviews: React.FC<{ property: Property }> = ({ property }) => {
@@ -54,8 +55,9 @@ export const PropertyReviews: React.FC<{ property: Property }> = ({ property }) 
     const violation=checkReviewText(reviewerName,comment);
     setSubmitting(true);
     try {
+      const token=registered ? await firebaseAuth.getFreshIdToken() : null;
       const response=await fetch('/api/reviews',{method:'POST',
-        headers:{'Content-Type':'application/json'},
+        headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},
         body:JSON.stringify({propertyId:property.id,propertyTitle:property.title,
           reviewerId,authorRegistered:registered,author:reviewerName,
           comment:comment.trim(),rating,unit:property.neighborhood})});
