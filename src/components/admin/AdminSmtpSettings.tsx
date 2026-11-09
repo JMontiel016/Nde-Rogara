@@ -12,6 +12,7 @@ async function request<T>(path:string,method='GET',body?:unknown):Promise<T> {
   if(!token)throw new Error('Se requiere iniciar sesión en Firebase con una cuenta administradora autorizada.');
   const response=await fetch(base+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await response.json().catch(()=>({}));
+  if(response.status===404)throw new Error('No se encontró el servicio de correo (404). Comprobá que las funciones API estén desplegadas en Vercel.');
   if(!response.ok)throw new Error([data.error||'Error del servidor',data.code].filter(Boolean).join(' · '));
   return data as T;
 }
