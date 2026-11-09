@@ -4,7 +4,7 @@ import { CheckCircle2, RefreshCw, Send, ShieldCheck, Server, AlertTriangle } fro
 
 type Settings = {provider:string;host:string;port:number;secure:boolean;user:string;from:string;senderName:string;replyTo:string;enabled:boolean;hasPassword:boolean};
 type Log = {id:string;to:string;type:string;status:string;errorCode?:string;createdAt?:string};
-const defaults: Settings = {provider:'gmail',host:'smtp.gmail.com',port:465,secure:true,user:'',from:'',senderName:'Nde Rogarã',replyTo:'',enabled:false,hasPassword:false};
+const defaults: Settings = {provider:'gmail',host:'smtp.gmail.com',port:465,secure:true,user:'016.jmma@gmail.com',from:'016.jmma@gmail.com',senderName:'Nde Rogarã',replyTo:'016.jmma@gmail.com',enabled:false,hasPassword:false};
 const field='mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-sky-500';
 const base=(import.meta.env.VITE_MAIL_API_URL||'/api/admin/mail/send').replace(/\/send$/,'');
 async function request<T>(path:string,method='GET',body?:unknown):Promise<T> {
@@ -18,7 +18,7 @@ async function request<T>(path:string,method='GET',body?:unknown):Promise<T> {
 export const AdminSmtpSettings:React.FC=()=>{
   const [data,setData]=useState<Settings>(defaults);
   const [password,setPassword]=useState('');
-  const [recipient,setRecipient]=useState('');
+  const [recipient,setRecipient]=useState('016.jmma@gmail.com');
   const [logs,setLogs]=useState<Log[]>([]);
   const [busy,setBusy]=useState('');
   const [status,setStatus]=useState('');
@@ -26,7 +26,7 @@ export const AdminSmtpSettings:React.FC=()=>{
   const [loaded,setLoaded]=useState(false);
   const refresh=async()=>{
     setBusy('refresh');setError('');
-    try {const [settings,history]=await Promise.all([request<Settings>('/settings'),request<Log[]>('/logs')]);setData(settings);setLogs(history);setLoaded(true);}
+    try {const [settings,history]=await Promise.all([request<Settings>('/settings'),request<Log[]>('/logs')]);setData({...defaults,...settings,user:settings.user||defaults.user,from:settings.from||defaults.from,replyTo:settings.replyTo||defaults.replyTo});setLogs(history);setLoaded(true);}
     catch(e){setError(e instanceof Error?e.message:'No se pudo cargar la configuración.');}
     finally{setBusy('');}
   };
@@ -51,7 +51,7 @@ export const AdminSmtpSettings:React.FC=()=>{
   };
   const update=<K extends keyof Settings>(k:K,v:Settings[K])=>setData(d=>({...d,[k]:v}));
   return <section className="space-y-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-lg font-black"><Server size={19}/> Configuración SMTP</h3><p className="mt-1 text-xs text-slate-500">Solo administradores autorizados en Firebase. La contraseña se almacena cifrada en el servidor.</p></div><button type="button" onClick={()=>void refresh()} disabled={!!busy} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"><RefreshCw size={14}/> Actualizar</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-lg font-black"><Server size={19}/> Configuración SMTP</h3><p className="mt-1 text-xs text-slate-500">Cuenta remitente sugerida: 016.jmma@gmail.com. La clave SMTP solo se envía al backend protegido, nunca al código público.</p></div><button type="button" onClick={()=>void refresh()} disabled={!!busy} className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"><RefreshCw size={14}/> Actualizar</button></div>
     {!firebaseAuth.isConfigured() && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle className="mr-2 inline" size={16}/> La cuenta administrativa local de demostración no permite modificar credenciales reales. Configurá Firebase y el backend.</p>}
     <div className="grid gap-4 md:grid-cols-2">
       <label className="text-xs font-bold">Proveedor<select className={field} value={data.provider} onChange={e=>{const v=e.target.value;setData(d=>({...d,provider:v,...(v==='gmail'?{host:'smtp.gmail.com',port:465,secure:true}:v==='outlook'?{host:'smtp.office365.com',port:587,secure:false}:{})}));}}><option value="gmail">Gmail</option><option value="outlook">Microsoft / Outlook</option><option value="custom">SMTP personalizado</option></select></label>
