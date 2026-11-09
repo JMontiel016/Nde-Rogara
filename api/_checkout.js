@@ -128,8 +128,10 @@ async function finalize(db,firebase,ref,token) {
     });
     confirmed=completed;
   });
-  // Si el email falla, la contratación y su correlativo permanecen confirmados.
-  await deliver(db,firebase,confirmed);
+  // El registro de la contratación no depende del servicio SMTP.
+  // Si Gmail/Firestore de logs falla, devolver igualmente el comprobante confirmado.
+  try { await deliver(db,firebase,confirmed); }
+  catch(error) { console.error('Aviso: factura guardada pero notificación de correo falló:',String(error?.code||error?.message||'SMTP')); }
   return confirmed;
 }
 /** Crear sesión a nombre del propietario y guardarla para todos los dispositivos. */
@@ -194,6 +196,6 @@ export async function cardCheckout(req,res) {
         createdAt:Date.now(),expiresAt:Date.now()+15*60*1000});}catch(e){if(e.code!==6&&e.code!== 'already-exists')throw e;}
     }
     const result=await finalize(db,firebase,ref,requestId);
-    return reply(res,200,{invoice:publicInvoice(result),mail:await mailStatus(db,result)});
+    return reply(res,200,{invoice:publicInvoice(result),mail:await mailStatus(db,result).catch(()=>({state:'pending',error:'No se pudo consultar el registro de envío. Revisá el panel de Administración.'}))});
   }catch(e){return reply(res,e.status||503,{error:e.status?e.message:'No se pudo registrar la contratación. Revisá Firebase/Firestore.'});}
 }
