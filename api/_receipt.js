@@ -1,6 +1,7 @@
 /**
  * Envío automático del comprobante de contratación de demostración.
- * No acepta destinatarios arbitrarios: solo correo autenticado/verificado en Firebase.
+ * Solo permite enviar comprobantes fijos desde una sesión verificada en Firebase;
+ * envío limitado por cuenta y operación para evitar uso como correo masivo.
  * Cada operación tiene un identificador único, límite diario y registro persistente.
  * El contenido suministrado por el navegador NO acredita cobro bancario ni emisión SIFEN.
  */
@@ -74,9 +75,13 @@ export default async function receiptHandler(req, res) {
     let user;
     try { user = await firebase.auth().verifyIdToken(token, true); }
     catch { return errorJson(res, 401, 'Tu sesión caducó. Volvé a iniciar sesión.'); }
-    const to = user.email?.toLowerCase();
-    if (!user.email_verified || !validEmail(to)) {
+    if (!user.email_verified || !validEmail(user.email)) {
       return errorJson(res, 403, 'Verificá el correo de tu cuenta antes de solicitar un comprobante.');
+    }
+    const to = typeof req.body?.invoice?.customerEmail === 'string'
+      ? req.body.invoice.customerEmail.trim().toLowerCase() : '';
+    if (!validEmail(to) || to.length > 180) {
+      return errorJson(res, 400, 'Ingresá un correo de facturación válido.');
     }
     const data = req.body || {};
     const invoice = data.invoice || {};
@@ -89,7 +94,7 @@ export default async function receiptHandler(req, res) {
     if (!plan || !/^[\w-]{8,90}$/.test(id) || !/^[\w-]{3,40}$/.test(number) ||
       name.length < 3 || !/^\d{3,10}(-\d)?$/.test(customerDocument) ||
       !['qr','card'].includes(data.method) ||
-      (invoice.customerEmail || '').toLowerCase() !== to) {
+      (invoice.customerEmail || '').trim().toLowerCase() !== to) {
       return errorJson(res, 400, 'Revisá los datos del comprobante y el correo autenticado.');
     }
     if (invoice.planName !== plan.name || Number(invoice.amount) !== plan.amount) {
