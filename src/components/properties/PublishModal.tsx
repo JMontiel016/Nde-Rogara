@@ -20,7 +20,8 @@ import { LocalVideoGallery } from './LocalVideoGallery';
 import { effectiveOwnerPlan, ownerHasProperty, ownerMediaUsage, propertyPhotoAllowance } from '../../data/publicationPlans';
 import { getNearbyPlaces, formatNearbyDistance, type NearbyPlace } from '../../services/nearbyPlaces';
 import { mapCenterForCity, matchCity, suggestParaguayCities } from '../../services/locationPreference';
-import { MAX_VIDEO_BYTES, MAX_VIDEO_SECONDS, uploadPropertyMedia, deletePropertyMedia } from '../../services/propertyMedia';
+import { MAX_VIDEO_BYTES, MAX_VIDEO_SECONDS, uploadPropertyMedia, deletePropertyMedia, videoDuration } from '../../services/propertyMedia';
+import { storeLocalVideo, removeLocalVideo, isStoredLocalVideo } from '../../services/videoMedia';
 import { submitPhotoForModeration } from '../../services/photoModeration';
 import { evaluateListing } from '../../services/adminGovernance';
 import { MapErrorBoundary } from '../common/MapErrorBoundary';
@@ -271,7 +272,7 @@ export const PublishModal: React.FC = () => {
         const result = await submitPhotoForModeration(file, setMediaProgress);
         if (result.approved) {
           setImages(prev => prev.length < planMaxPhotos ? [...prev, result.url] : prev);
-          if (result.pendingManualReview) setPhotoInfo('Foto añadida al borrador. El aviso quedará pendiente de revisión antes de aparecer en el catálogo.');
+          if (result.pendingManualReview) setPhotoInfo(result.url.startsWith('data:') ? 'Foto guardada para demostración en este navegador; no será visible en otros dispositivos.' : 'Foto subida. Quedará pendiente de verificación antes de aparecer públicamente.');
         }
         else setPhotoAlert(result.reason);
       }
@@ -291,7 +292,20 @@ export const PublishModal: React.FC = () => {
         const url=await uploadPropertyMedia(file,'video',setMediaProgress);
         setVideos(prev=>prev.length<planMaxVideos?[...prev,url]:prev);
       }catch(error){
-        setSaveError((prev)=>(prev?prev+' ':'')+file.name+': '+(error instanceof Error?error.message:'No se pudo subir.'));
+        const reason=error instanceof Error?error.message:'No se pudo subir.';
+        if (/Firebase Storage|storage\\/|bucket|almacenamiento|permission|unauthorized|quota|not found|404|402|403|CORS|fetch|network/i.test(reason)) {
+          try {
+            const duration=await videoDuration(file);
+            if(duration>MAX_VIDEO_SECONDS)throw new Error('El video debe durar como máximo 40 segundos.');
+            const local=await storeLocalVideo(file);
+            setVideos(prev=>[...prev,local]);
+            setPhotoInfo('Video guardado en este navegador para demostración. No será visible desde otros dispositivos.');
+          }catch(localError){
+            setSaveError((prev)=>(prev?prev+' ':'')+file.name+': '+(localError instanceof Error?localError.message:'Error de video.'));
+          }
+        }else{
+          setSaveError((prev)=>(prev?prev+' ':'')+file.name+': '+reason);
+        }
       }
     }
     setMediaProgress(0);setUploadingVideo(false);
@@ -302,7 +316,8 @@ export const PublishModal: React.FC = () => {
   const removeMedia = async (kind:'image'|'video',value:string)=>{
     setSaveError('');
     try{
-      await deletePropertyMedia(value);
+      if(kind==='video' && isStoredLocalVideo(value))await removeLocalVideo(value);
+      else await deletePropertyMedia(value);
       if(kind==='image')setImages(prev=>prev.filter(x=>x!==value));
       else setVideos(prev=>prev.filter(x=>x!==value));
     }catch(error){setSaveError(error instanceof Error?error.message:'No se pudo eliminar el archivo.');}
