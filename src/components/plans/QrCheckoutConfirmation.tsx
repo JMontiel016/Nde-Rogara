@@ -39,22 +39,22 @@ export const QrCheckoutConfirmation: React.FC<{ token: string; ownerId?: string 
       </div>
       <p className="text-xs font-bold uppercase tracking-wider text-sky-700">Nde Rogarã · Contratación</p>
       <h1 className="mt-3 text-2xl font-black text-slate-900">
-        {state === 'complete' ? 'Pago confirmado' : state === 'error' ? 'Enlace no disponible' : 'Confirmación del pago con QR'}
+        {state === 'complete' ? 'Pago confirmado' : state === 'error' ? 'Enlace no disponible' : 'Confirmación de contratación'}
       </h1>
       <p className="mt-4 text-sm leading-6 text-slate-600">
         {state === 'complete'
-          ? 'Tu contratación fue confirmada. Volvé a la página donde elegiste el plan para activar tus publicaciones y consultar el comprobante.'
-          : 'Revisá que estés contratando un plan en Nde Rogarã antes de continuar.'}
+          ? 'Contratación confirmada. El sistema notificará al propietario y enviará el comprobante por correo si el servicio SMTP está disponible.'
+          : 'Presioná Pagar para confirmar esta contratación de prueba en Nde Rogarã.'}
       </p>
       {details && <div className="mt-5 rounded-2xl bg-sky-50 px-5 py-4 text-left"><p className="text-xs font-bold uppercase tracking-wide text-sky-700">Plan seleccionado</p><p className="mt-1 font-black text-slate-900">{details.planName}</p><p className="mt-1 text-lg font-black text-slate-950">Gs. {new Intl.NumberFormat('es-PY').format(details.amount)}</p></div>}
       {state === 'pending' && <button onClick={() => void confirm()} disabled={loading} className="mt-7 w-full rounded-2xl bg-sky-600 px-5 py-4 text-sm font-black text-white hover:bg-sky-700 disabled:opacity-50">
-        {loading ? 'Confirmando…' : 'Confirmar pago'}
+        {loading ? 'Confirmando…' : 'Pagar'}
       </button>}
       {state === 'loading' && <p className="mt-6 text-sm text-slate-500">Cargando solicitud…</p>}
       {notice && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{notice}</p>}
       <div className="mt-7 flex items-start gap-2 rounded-2xl bg-slate-50 p-4 text-left text-xs leading-5 text-slate-500">
         <CircleHelp size={16} className="mt-0.5 shrink-0"/>
-        La confirmación corresponde al registro de la contratación en esta versión local; no se realizó un cargo bancario.
+        Pago de prueba: esta acción confirma la contratación de demostración, sin transferir dinero ni realizar un cobro bancario.
       </div>
     </section>
   </main>;
