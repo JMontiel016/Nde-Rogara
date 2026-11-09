@@ -364,9 +364,11 @@ export const PublishModal: React.FC = () => {
       for(const file of photos) {
         try {
           const result=await submitPhotoForModeration(file,setMediaProgress);
-          if(result.approved && result.url) {
+          if(result.approved) {
             setImages(prev=>[...prev,result.url]);acceptedPhotos++;
-          } else problems.push(file.name+': '+(result.reason||'Formato no permitido.'));
+          } else {
+            problems.push(file.name+': '+result.reason);
+          }
         }catch(error) {
           problems.push(file.name+': '+(error instanceof Error?error.message:'No se pudo leer la fotografía.'));
         }
