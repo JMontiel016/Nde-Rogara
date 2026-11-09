@@ -32,7 +32,7 @@ export default async function handler(req,res){
     const firebase=getAdmin(),db=firebase.firestore();
     if(req.method==='GET'){
       const snapshot=await db.collection('property_reviews_public').where('propertyId','==',propertyId).limit(200).get();
-      const reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}))
+      const reviews=snapshot.docs.map(doc=>{const {reviewerId, ...data}=doc.data();return {id:doc.id,...data};})
         .filter(row=>row.status==='published')
         .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
       return response(res,200,{reviews});
@@ -40,8 +40,13 @@ export default async function handler(req,res){
     const input=req.body||{};
     const comment=String(input.comment||'').trim();
     const rating=Number(input.rating);
-    const author=input.authorRegistered ? String(input.author||'').trim().slice(0,70) : 'Anónimo';
-    const anonymousId=String(input.reviewerId||'').slice(0,80);
+    const claimedId=String(input.reviewerId||'').slice(0,80);
+    let authenticated=null;
+    const token=(req.headers.authorization||'').match(/^Bearer (.+)$/)?.[1];
+    if(token){try{authenticated=await firebase.auth().verifyIdToken(token,true);}catch{/* El comentario se tratará como anónimo. */}}
+    const verifiedAuthor=Boolean(authenticated?.uid === claimedId && authenticated?.email_verified && authenticated?.admin!==true);
+    const anonymousId=verifiedAuthor?authenticated.uid:claimedId;
+    const author=verifiedAuthor ? String(authenticated.name||input.author||'Usuario registrado').trim().slice(0,70) : 'Anónimo';
     const title=String(input.propertyTitle||'').trim().slice(0,160);
     if(comment.length<20||comment.length>1500||!Number.isInteger(rating)||rating<1||rating>5 ||
        !author||title.length<2 || !/^[a-zA-Z0-9_-]{8,80}$/.test(anonymousId))
@@ -61,7 +66,7 @@ export default async function handler(req,res){
       tx.create(byActor,{propertyId,createdAt:Date.now()});
       tx.set(quota,{count:(count.data()?.count||0)+1},{merge:true});
       tx.create(db.collection('property_reviews_public').doc(id),{
-        propertyId,propertyTitle:title,author,authorRegistered:Boolean(input.authorRegistered),
+        propertyId,propertyTitle:title,author,authorRegistered:verifiedAuthor,
         reviewerId:anonymousId,date:new Date().toISOString(),rating,comment,unit:String(input.unit||'').slice(0,100),
         isVerified:false,status:violation?'blocked':'published',moderationReason:violation||null
       });
