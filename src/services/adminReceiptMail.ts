@@ -40,8 +40,8 @@ export async function resendReceiptFromAdmin(invoice: FiscalInvoice, cc: string[
   const method = invoice.method === 'Código QR' ? 'qr' : 'card';
   const normalized = cc.map(x => x.trim().toLowerCase()).filter(Boolean);
   if (normalized.length > 3 || normalized.some(x => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)))
-    throw new Error('Ingresá hasta tres correos válidos, separados por coma.');
+    throw new Error('Ingresá hasta tres correos válidos, separados por punto y coma (;).');
   await adminRequest<{sent:boolean}>('/api/admin/mail/receipt', {
-    method: 'POST', body: JSON.stringify({ invoice, planId, method, cc: normalized }),
+    method: 'POST', body: JSON.stringify({ invoice, planId, method, cc: normalized, requestId: crypto.randomUUID() }),
   });
 }
