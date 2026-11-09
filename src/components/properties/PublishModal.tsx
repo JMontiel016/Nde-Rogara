@@ -141,6 +141,7 @@ export const PublishModal: React.FC = () => {
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [mediaProgress, setMediaProgress] = useState(0);
   const [saveError, setSaveError] = useState('');
+  const [savingProperty, setSavingProperty] = useState(false);
   const [photoAlert, setPhotoAlert] = useState('');
   const [photoInfo, setPhotoInfo] = useState('');
   const [success, setSuccess] = useState(false);
@@ -395,8 +396,9 @@ export const PublishModal: React.FC = () => {
   const removeAt = (index: number, setter: React.Dispatch<React.SetStateAction<string[]>>) => setter(prev => prev.filter((_, i) => i !== index));
   const changeAt = (index: number, value: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => setter(prev => prev.map((item, i) => i === index ? value : item));
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setSaveError('');
+    if(savingProperty)return;
     if (!currentUser || !['landlord', 'admin'].includes(userRole)) { setSaveError('Ingresá como propietario para publicar.'); return; }
     if (editingProperty && userRole !== 'admin' && !ownerHasProperty(editingProperty, currentUser)) { setSaveError('No tenés permiso para editar este aviso.'); return; }
     if (userRole !== 'admin' && !plan) { setSaveError('Elegí un plan vigente antes de publicar.'); return; }
@@ -466,8 +468,9 @@ export const PublishModal: React.FC = () => {
       ? Boolean(reason || addedMedia || editingProperty.moderationStatus==='flagged')
       : Boolean(reason || images.length || videos.length);
     setReviewPending(reviewRequired);
+    setSavingProperty(true);
     try {
-      if (editingProperty) updateProperty(data); else addProperty(data);
+      if (editingProperty) await updateProperty(data); else await addProperty(data);
       const removed=pendingMediaDeletes.current.splice(0);
       for(const file of removed) {
         void (file.kind==='video'&&isStoredLocalVideo(file.url)
@@ -477,8 +480,8 @@ export const PublishModal: React.FC = () => {
       setSavedAsEdit(Boolean(editingProperty));
       setSuccess(true);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el aviso. Revisá el almacenamiento disponible.');
-    }
+      setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el aviso en el servidor.');
+    }finally{setSavingProperty(false);}
   };
 
   const editableEntries = (items: string[], setter: React.Dispatch<React.SetStateAction<string[]>>, title: string) => (
@@ -672,7 +675,7 @@ export const PublishModal: React.FC = () => {
 
       <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-white/95 px-3 py-4 backdrop-blur-sm">
         <button type="button" className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700" onClick={close}>Cancelar</button>
-        <button type="submit" disabled={checkingPhotos || uploadingVideo} className="inline-flex items-center gap-2 rounded-xl bg-sky-700 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-sky-800 disabled:opacity-50"><CheckCircle2 size={17} />{editingProperty ? 'Guardar cambios' : 'Publicar inmueble'}</button>
+        <button type="submit" disabled={checkingPhotos || uploadingVideo || savingProperty} className="inline-flex items-center gap-2 rounded-xl bg-sky-700 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-sky-800 disabled:opacity-50"><CheckCircle2 size={17} />{editingProperty ? 'Guardar cambios' : 'Publicar inmueble'}</button>
       </footer>
     </form>}
   </Modal>;
