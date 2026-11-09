@@ -35,6 +35,19 @@ export async function fetchFiscalInvoices(): Promise<FiscalInvoice[]> {
   return getLocalInvoices();
 }
 
+/** Almacena el comprobante asignado por Firestore. No inventa un correlativo local. */
+export function saveConfirmedInvoice(invoice: FiscalInvoice): FiscalInvoice {
+  if (!/^001-001-\d{7}$/.test(invoice.documentNumber) ||
+    !invoice.paymentId || !invoice.id || !invoice.ownerId) {
+    throw new Error('El servidor no devolvió un comprobante válido.');
+  }
+  const existing = getLocalInvoices();
+  const updated = [invoice, ...existing.filter(row => row.paymentId !== invoice.paymentId)];
+  localStorage.setItem(STORAGE, JSON.stringify(updated));
+  window.dispatchEvent(new Event(INVOICES_CHANGED));
+  return invoice;
+}
+
 /** Una sola constancia por operación. El número es LOCAL y NO es numeración tributaria. */
 export function createDemoInvoice(payment: PaymentRecord): FiscalInvoice {
   if (payment.status !== 'paid') throw new Error('Confirmá primero la contratación de demostración.');
