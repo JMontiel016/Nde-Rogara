@@ -1,0 +1,4 @@
+Motor QR basado en QRCode for JavaScript de Kazuhiko Arase (2009).
+Licencia MIT: https://opensource.org/license/mit
+Modificaciones y empaquetado: proyecto qrcode-terminal.
+Su distribución conserva los derechos de autor indicados por el código original.

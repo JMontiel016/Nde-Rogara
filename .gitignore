@@ -1,6 +1,34 @@
-# Nde Rogara
+# Dependencias y compilaciones generadas
 node_modules/
 dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Variables locales: no incluir configuraciones ni claves en el proyecto compartido
 .env
 .env.*
 !.env.example
+
+# Archivos temporales del sistema y del editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# Información local, certificados y datos privados
+*.pem
+*.p12
+*.pfx
+*.key
+serviceAccountKey.json
+*service-account*.json
+*.sqlite
+*.sqlite3
+*.db
+backups/
+backup/
+uploads/
+private/
+**/.DS_Store

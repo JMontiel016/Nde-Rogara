@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print specific styles */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Mapa inmobiliario: marcadores compactos y controles legibles sobre ambos fondos. */
+.nr-map-shell .leaflet-container {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #e2e8f0;
+}
+.nr-map-shell .leaflet-control-zoom {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .13);
+}
+.nr-map-shell .leaflet-control-zoom a {
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  color: #0f172a;
+  font-size: 19px;
+}
+.nr-property-pin-container, .nr-service-pin-container { background: transparent; border: none; overflow: visible !important; }
+/* Leaflet usa el punto de anclaje del icono; el precio debe mantenerse centrado y legible. */
+.nr-property-pin-container { pointer-events: auto; }
+.nr-property-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 132px;
+  width: max-content;
+  max-width: 170px;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: white;
+  background: #0f2746;
+  border: 2px solid white;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, .27);
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -.015em;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.nr-property-pin:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(15, 23, 42, .28); }
+.nr-property-pin--featured { color: #075985; background: #bae6fd; border-color: #fff; box-shadow: 0 5px 14px rgba(3, 105, 161, .30); }
+.nr-property-pin__dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+.nr-property-pin-container.leaflet-interactive:focus-visible .nr-property-pin { outline: 3px solid #38bdf8; outline-offset: 2px; }
+.nr-map-shell .leaflet-marker-icon { overflow: visible; }
+.nr-map-shell .leaflet-popup-content a { color: #0369a1; }
+.nr-service-pin {
+  display: flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  border-radius: 11px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, .18);
+  font-size: 14px;
+  transition: transform .15s ease;
+}
+.nr-service-pin:hover { transform: scale(1.16); }
+.nr-map-shell .leaflet-popup-content-wrapper { border-radius: 16px; box-shadow: 0 14px 35px rgba(15,23,42,.18); }
+.nr-map-shell .leaflet-popup-content { margin: 11px; }
+.nr-map-category-scroll { scrollbar-width: thin; }
+/* Las búsquedas están fuera del mapa: los precios permanecen visibles y clicables. */
+.nr-map-shell .leaflet-container { z-index: 0; }
+.nr-map-nearby-results { scrollbar-width: thin; }
+.nr-map-category-scroll { scrollbar-width: thin; }
+@media (max-width: 520px) {
+  .nr-map-shell .leaflet-control-attribution { font-size: 8px; }
+  .nr-map-shell .leaflet-control-zoom { margin-bottom: 16px !important; }
+}
+
+/* ========================================================================== 
+   Apariencia global persistente. Las reglas apuntan a las clases utilitarias
+   ya utilizadas por los módulos; no alteran mapas satelitales ni fotografías.
+   ========================================================================== */
+:root[data-theme="dark"] { color-scheme: dark; background: #0b1220; }
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #root { background: #0b1220; color: #e2e8f0; }
+:root[data-theme="dark"] :is(.bg-white, [class*="bg-white/"], .bg-slate-50, [class*="bg-slate-50/"], .bg-slate-100) {
+  background-color: #172238 !important;
+}
+:root[data-theme="dark"] :is(.bg-slate-200, .bg-slate-300) { background-color: #273449 !important; }
+:root[data-theme="dark"] :is(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700) { color: #e2e8f0 !important; }
+:root[data-theme="dark"] :is(.text-slate-600, .text-slate-500, .text-slate-400) { color: #aebdd0 !important; }
+:root[data-theme="dark"] :is(.border-slate-100, .border-slate-200, .border-slate-300, .border) { border-color: #334155 !important; }
+:root[data-theme="dark"] :is(.text-brand-700, .text-brand-800, .text-sky-700, .text-sky-800) { color: #7dd3fc !important; }
+:root[data-theme="dark"] :is(.bg-brand-50, .bg-brand-100, .bg-sky-50, .bg-sky-100) { background-color: #123956 !important; }
+:root[data-theme="dark"] :is(input, select, textarea) { color: #f1f5f9; background-color: #172238; border-color: #475569; }
+:root[data-theme="dark"] :is(input, textarea)::placeholder { color: #8ca0b8; }
+:root[data-theme="dark"] select option { color: #f1f5f9; background: #172238; }
+:root[data-theme="dark"] :is(.hover\:bg-slate-100:hover, .hover\:bg-slate-50:hover) { background-color: #273449 !important; }
+:root[data-theme="dark"] .leaflet-container { color-scheme: light; }
+:root[data-theme="dark"] .leaflet-control-zoom a { color: #0f172a; background: white; }
+:root[data-theme="dark"] .leaflet-popup-content-wrapper { color: #0f172a; background: #fff; }
+:root[data-theme="dark"] .theme-toggle { background: #1e293b; color: #facc15; }
