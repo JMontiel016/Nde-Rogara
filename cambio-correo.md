@@ -19,3 +19,9 @@
 - La aceptación SMTP no garantiza entrega final en bandeja de entrada.
 - Los pagos/facturas de demostración no se transforman en cobros ni en KuDE reales.
 - En producción se necesita proxy o dirección API HTTPS propia; el proxy de Vite es solo de desarrollo.
+
+## Ajuste posterior — Acceso demo al panel
+- `src/components/auth/AuthModal.tsx`: elimina los avisos de configuración administrativa y mensajes internos del formulario de ingreso; conserva validación de correo/contraseña y separación entre cuentas.
+- Usuarios locales existentes: `admin@admin.com.py` (administrador) y `016.jmma@gmail.com` (inmobiliaria).
+- Las contraseñas elegidas NO se incluyen en GitHub: ejecutar `bash configurar-demo-local.sh` y escribir las dos contraseñas solicitadas cuando el script lo pida. La configuración queda en `.env.local` con permisos limitados; reiniciar Vite.
+- Las cuentas de demostración solo funcionan con `npm run dev` en `localhost` o `127.0.0.1` y no conceden acceso al SMTP de producción ni permisos Firebase.
