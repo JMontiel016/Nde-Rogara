@@ -134,6 +134,12 @@ export const AdminPanel: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [moderationClock, setModerationClock] = useState(Date.now());
+  useEffect(() => {
+    if(tab !== 'alerts') return;
+    const interval=window.setInterval(()=>setModerationClock(Date.now()),5000);
+    return ()=>window.clearInterval(interval);
+  },[tab]);
   const [confirmation, setConfirmation] = useState<{ property?: Property; user?: UserProfile; action: string } | null>(null);
   const [reason, setReason] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -344,7 +350,9 @@ export const AdminPanel: React.FC = () => {
   // La aprobación sigue necesitando comprobar el contenido de fotos y videos.
   const flaggedProperties = properties
     .filter((property) => property.moderationStatus === 'flagged')
-    .sort((a, b) => Date.parse(a.createdAt||'') - Date.parse(b.createdAt||''));
+    .sort((a, b) => Date.parse(a.moderationRequestedAt||a.createdAt||'') - Date.parse(b.moderationRequestedAt||b.createdAt||''));
+  const overdueModeration = flaggedProperties.filter(property =>
+    moderationClock-Date.parse(property.moderationRequestedAt||property.createdAt||'') >= 60000).length;
   const pendingReviews = blockedReviews;
   const publishedProperties = properties.filter(
     (property) => property.moderationStatus !== 'removed' && property.isActive !== false,
@@ -827,6 +835,10 @@ export const AdminPanel: React.FC = () => {
                 <div>
                   <h2 className="text-xl font-black text-slate-900">Moderación de publicaciones</h2>
                   <p className="mt-1 text-sm text-slate-500">Se priorizan los avisos que llevan más tiempo esperando. Revisá las fotografías y videos antes de aprobar. La decisión notifica al propietario y solicita un correo automático desde el servidor SMTP.</p>
+                  <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                    {overdueModeration ? `${overdueModeration} aviso(s) llevan más de 1 minuto esperando y necesitan aprobación manual prioritaria.` : `Solicitudes pendientes: ${flaggedProperties.length}. A los 60 segundos sin aprobación se marcan como prioritarias.`}
+                    {' '}La revisión de imágenes y videos nunca se aprueba automáticamente por tiempo.
+                  </div>
                 </div>
                 <div className={`${shell} divide-y`}>
                   {flaggedProperties.length === 0 ? (
@@ -840,7 +852,10 @@ export const AdminPanel: React.FC = () => {
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                               <div>
                                 <h3 className="text-lg font-black text-slate-900">{property.title}</h3>
-                                <p className="mt-1 text-sm text-slate-500">{property.ownerName} · {property.ownerEmail} · {property.images?.length || 0} fotos · {property.videos?.length || 0} videos · En espera desde {dateTime(property.createdAt)}</p>
+                                <p className="mt-1 text-sm text-slate-500">{property.ownerName} · {property.ownerEmail} · {property.images?.length || 0} fotos · {property.videos?.length || 0} videos · Solicitud {dateTime(property.moderationRequestedAt||property.createdAt)}</p>
+                                <p className={`mt-2 inline-flex rounded-lg px-3 py-1.5 text-xs font-bold ${moderationClock-Date.parse(property.moderationRequestedAt||property.createdAt||'')>=60000?'bg-rose-100 text-rose-800':'bg-amber-100 text-amber-800'}`}>
+                                  {moderationClock-Date.parse(property.moderationRequestedAt||property.createdAt||'')>=60000?'Más de 1 minuto: aprobar manualmente':'En cola de revisión (hasta 1 minuto para escalar)'}
+                                </p>
                                 <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                   {property.moderationReason || 'El anuncio necesita revisión por política interna.'}
                                 </p>
