@@ -1101,15 +1101,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const unsubscribeFb = firebaseAuth.isConfigured() ? firebaseAuth.onAuthStateChanged((fbUser) => {
-      if (fbUser && !currentUser) {
+      if (fbUser?.email) {
+        // El token de Firebase es la única fuente autorizada para el rol.
+        // localStorage guarda preferencias del perfil, nunca permisos administrativos.
         const registered = readStored<UserProfile[]>('alquipy_registered_users', [], isList);
-        const existing = registered.find(u => u.email.toLowerCase() === (fbUser.email || '').toLowerCase());
-        
-        // Solo restaurar la sesión si el usuario fue registrado legítimamente
-        if (existing && existing.role === 'landlord' && existing.status !== 'inactive') {
-          setCurrentUser(existing);
-          setUserRole(existing.role);
-        }
+        const existing = registered.find(u => u.id === fbUser.uid && u.email.toLowerCase() === fbUser.email?.toLowerCase());
+        if (existing?.status === 'inactive') return;
+        const verified: UserProfile = {
+          id: fbUser.uid,
+          email: fbUser.email,
+          name: existing?.name || fbUser.displayName || fbUser.email.split('@')[0],
+          role: fbUser.role === 'admin' ? 'admin' : 'landlord',
+          status: 'active',
+          phone: existing?.phone || '',
+          city: existing?.city,
+          avatar: existing?.avatar,
+        };
+        setCurrentUser(verified);
+        setUserRole(verified.role);
+        localStorage.setItem('alquipy_current_user', JSON.stringify(verified));
+        // No navegar automáticamente si el usuario está editando su perfil.
+      } else if (!firebaseAuth.getCurrentUser()) {
+        setCurrentUser(null);
+        setUserRole('visitor');
+        localStorage.removeItem('alquipy_current_user');
       }
     }) : () => {};
 
