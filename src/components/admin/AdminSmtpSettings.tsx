@@ -3,7 +3,7 @@ import { firebaseAuth } from '../../services/firebaseAuth';
 import { CheckCircle2, RefreshCw, Send, ShieldCheck, Server, AlertTriangle } from 'lucide-react';
 
 type Settings = {provider:string;host:string;port:number;secure:boolean;user:string;from:string;senderName:string;replyTo:string;enabled:boolean;hasPassword:boolean};
-type Log = {id:string;to:string;type:string;status:string;errorCode?:string;createdAt?:string};
+type Log = {id:string;to:string;type:string;status:string;errorCode?:string;errorMessage?:string;documentNumber?:string;paymentId?:string;createdAt?:string};
 const defaults: Settings = {provider:'gmail',host:'smtp.gmail.com',port:465,secure:true,user:'016.jmma@gmail.com',from:'016.jmma@gmail.com',senderName:'Nde Rogarã',replyTo:'016.jmma@gmail.com',enabled:false,hasPassword:false};
 const field='mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-sky-500';
 const base=(import.meta.env.VITE_MAIL_API_URL||'/api/admin/mail/send').replace(/\/send$/,'');
@@ -31,7 +31,11 @@ export const AdminSmtpSettings:React.FC=()=>{
     catch(e){setError(e instanceof Error?e.message:'No se pudo cargar la configuración.');}
     finally{setBusy('');}
   };
-  useEffect(()=>{void refresh();},[]);
+  useEffect(()=>{
+    void refresh();
+    const interval=window.setInterval(()=>{ if(!document.hidden && !busy)void refresh(); },60000);
+    return ()=>window.clearInterval(interval);
+  },[]);
   const action=async(type:'save'|'verify'|'test')=>{
     setBusy(type);setError('');setStatus('');
     try{
@@ -70,6 +74,24 @@ export const AdminSmtpSettings:React.FC=()=>{
     <div className="space-y-3 border-t pt-4"><h4 className="font-black">Prueba de envío</h4><div className="flex flex-col gap-2 sm:flex-row"><input className={field} type="email" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="destinatario@correo.com"/><button disabled={!!busy||!loaded} onClick={()=>void action('test')} className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Send size={15}/> Enviar prueba</button></div></div>
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {status && <p role="status" className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 size={16}/>{status}</p>}
-    <div className="border-t pt-4"><h4 className="mb-3 font-black">Historial del servidor</h4>{logs.length===0?<p className="text-sm text-slate-500">Sin envíos registrados.</p>:<div className="max-h-64 space-y-2 overflow-auto">{logs.map(log=><div key={log.id} className="flex flex-wrap justify-between gap-2 rounded-xl border p-3 text-xs"><span><strong>{log.type==='test'?'Prueba':'Correo'}</strong> · {log.to}<br/>{log.createdAt?new Date(log.createdAt).toLocaleString('es-PY'):'Fecha pendiente'}</span><span className={log.status==='accepted'?'text-emerald-700':'text-rose-700'}>{log.status==='accepted'?'Aceptado por SMTP':'Error'} {log.errorCode||''}</span></div>)}</div>}</div>
+    <div className="border-t pt-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-black">Historial del servidor y comprobantes</h4><button type="button" onClick={()=>void refresh()} disabled={!!busy} className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-50">Actualizar historial</button></div>
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-xl bg-sky-50 p-3"><strong className="block text-base">{logs.filter(l=>l.type==='receipt').length}</strong>Comprobantes</div>
+        <div className="rounded-xl bg-emerald-50 p-3"><strong className="block text-base">{logs.filter(l=>l.status==='accepted').length}</strong>Aceptados SMTP</div>
+        <div className="rounded-xl bg-rose-50 p-3"><strong className="block text-base">{logs.filter(l=>l.status==='failed').length}</strong>Errores</div>
+      </div>
+      {logs.some(l=>l.status==='failed') && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><strong>Atención:</strong> hay correos que no se enviaron. Revisá el detalle y la conexión SMTP. El sistema no los marca como enviados.</div>}
+      {logs.length===0 ? <p className="text-sm text-slate-500">Sin envíos registrados en el servidor.</p> :
+        <div className="max-h-80 space-y-2 overflow-auto">{logs.map(log=>
+          <div key={log.id} className={`rounded-xl border p-3 text-xs ${log.status==='failed'?'border-rose-200 bg-rose-50/50':'border-slate-200'}`}>
+            <div className="flex flex-wrap justify-between gap-2"><span><strong>{log.type==='receipt'?'Comprobante PDF':log.type==='test'?'Prueba SMTP':'Correo manual'}</strong> · {log.to}</span>
+              <strong className={log.status==='accepted'?'text-emerald-700':'text-rose-700'}>{log.status==='accepted'?'Aceptado por SMTP':'Error de envío'}</strong>
+            </div>
+            <p className="mt-1 text-slate-500">{log.createdAt?new Date(log.createdAt).toLocaleString('es-PY'):'Fecha pendiente'} {log.documentNumber?`· Nº ${log.documentNumber}`:''}</p>
+            {log.status==='failed' && <p className="mt-2 break-words text-rose-800">{log.errorMessage || log.errorCode || 'Error no especificado. Revisá los registros de Vercel.'}</p>}
+          </div>)}</div>}
+      <p className="text-[11px] text-slate-500">«Aceptado» significa que el servidor SMTP recibió el correo; no garantiza que esté en la bandeja de entrada del destinatario.</p>
+    </div>
   </section>;
 };
