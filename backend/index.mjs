@@ -11,6 +11,7 @@ import vision from '@google-cloud/vision';
 import { Storage } from '@google-cloud/storage';
 import admin from 'firebase-admin';
 import { randomUUID } from 'node:crypto';
+import { buildMailRouter } from './mailAdmin.mjs';
 
 admin.initializeApp();
 const scanner = new vision.ImageAnnotatorClient();
@@ -59,6 +60,10 @@ app.post('/api/moderation/photos',cors,authenticated,upload.single('photo'),asyn
   }catch(error){console.error('Falló la verificación de fotos:',error?.message||'Error');return res.status(503).json({approved:false,reason:'No se pudo verificar la foto. Intentalo más tarde.'});}
 });
 
+// Configuración y diagnósticos: únicamente ID token Firebase con claim admin.
+const mailService = buildMailRouter(admin,authenticated,cors);
+app.use('/api/admin/mail', express.json({limit:'20kb'}), mailService.router);
+
 /**
  * Envío SMTP protegido en backend: no acepta la cuenta de demo local como
  * credencial. Requiere un ID token Firebase con custom claim admin === true.
@@ -72,20 +77,15 @@ app.post('/api/admin/mail/send', cors, authenticated, express.json({ limit: '20k
      typeof body !== 'string' || body.trim().length < 10 || body.length > 9000) {
     return res.status(400).json({error:'Revisá destinatario, asunto y contenido.'});
   }
-  const { SMTP_HOST, SMTP_PORT='587', SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
-  if(!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM)
-    return res.status(503).json({error:'SMTP no configurado.'});
   try {
-    const { default: nodemailer } = await import('nodemailer');
-    const transport = nodemailer.createTransport({
-      host: SMTP_HOST, port:Number(SMTP_PORT), secure:Number(SMTP_PORT)===465,
-      requireTLS:Number(SMTP_PORT)!==465, auth:{user:SMTP_USER,pass:SMTP_PASS},
-      connectionTimeout:10000, greetingTimeout:10000, socketTimeout:15000,
-    });
-    const result=await transport.sendMail({from: SMTP_FROM,to,subject:subject.trim(),text:body.trim()});
+    const config=await mailService.getConfig();
+    const transport=mailService.transportFor(config);
+    const result=await transport.sendMail({from:{name:config.senderName,address:config.from},replyTo:config.replyTo||undefined,to,subject:subject.trim(),text:body.trim()});
     if(!result.accepted?.length) return res.status(502).json({error:'El proveedor no aceptó el mensaje.'});
+    await mailService.record('manual',to,'accepted');
     return res.json({sent:true,messageId:result.messageId});
   }catch(err){
+    await mailService.record('manual',to,'failed',String(err?.code || 'SMTP_ERROR')).catch(()=>{});
     console.error('Error de SMTP al enviar mensaje administrativo:',err?.code || 'SMTP_ERROR');
     return res.status(502).json({error:'No fue posible enviar el mensaje por SMTP.'});
   }
