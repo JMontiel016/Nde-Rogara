@@ -1304,18 +1304,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isVerified: false, verifiedAt: undefined, isActive: false,
     };
     const nextFlag = evaluateListing(guarded);
-    const mediaPending = (guarded.images?.length || 0)>0 || (guarded.videos?.length || 0)>0;
-    const flagged = Boolean(nextFlag || mediaPending);
-    guarded.moderationStatus = flagged ? 'flagged' : 'approved';
-    guarded.moderationReason = nextFlag || (mediaPending ? 'Fotografías o videos pendientes de verificación' : undefined);
-    guarded.isActive = !flagged;
-    if (flagged && !admin) recordModeration(guarded,'flagged',guarded.moderationReason||'Requiere revisión',
-      nextFlag ? 'Filtro automático de texto' : 'Revisión visual necesaria');
+    // Revisión visual solo si se añaden fotografías o videos nuevos.
+    // Reordenar portada, quitar medios o corregir datos no despublica un aviso aprobado.
+    const mediaAdded =
+      guarded.images.some(url=>!previous.images.includes(url)) ||
+      (guarded.videos||[]).some(url=>!(previous.videos||[]).includes(url));
+    const pendingReview = previous.moderationStatus === 'flagged';
+    const flagged=Boolean(nextFlag || mediaAdded || pendingReview);
+    guarded.moderationStatus=flagged?'flagged':'approved';
+    guarded.moderationReason=nextFlag ||
+      (mediaAdded?'Fotografías o videos nuevos pendientes de verificación':
+        pendingReview?previous.moderationReason:undefined);
+    guarded.isActive=flagged?false:previous.isActive!==false;
+    guarded.isVerified=flagged?false:previous.isVerified;
+    guarded.verifiedAt=flagged?undefined:previous.verifiedAt;
+    if(flagged && !admin && (nextFlag || mediaAdded)) recordModeration(guarded,'flagged',
+      guarded.moderationReason||'Requiere revisión',
+      nextFlag?'Filtro automático de texto':'Multimedia nueva pendiente de revisión');
 
     const list = properties.map(p => p.id === updated.id ? guarded : p);
     persistPropertyList(list);
     setProperties(list);
-    setEditingProperty(null);
+    // El formulario se cierra solo al confirmar: no reiniciar antes de mostrar éxito.
     addNotification({
       title: flagged ? 'Edición pendiente' : 'Inmueble actualizado',
       message: flagged ? `«${updated.title}» requiere revisión: ${guarded.moderationReason}.` : `«${updated.title}» pasó el filtro de texto.`,
