@@ -138,6 +138,7 @@ export const AdminPanel: React.FC = () => {
   const [reason, setReason] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
   const [actionError, setActionError] = useState('');
+  const [adminActionNotice, setAdminActionNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [invoices, setInvoices] = useState<FiscalInvoice[]>([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -390,6 +391,7 @@ export const AdminPanel: React.FC = () => {
         else {
           const action=confirmation.action === 'approve' ? 'approved' : 'removed';
           moderateProperty(confirmation.property.id, action, reason.trim());
+          setAdminActionNotice('Decisión registrada en este navegador. Verificando notificación SMTP al propietario…');
           // El cliente es notificado dentro del navegador y, si SMTP funciona,
           // también por correo. El error SMTP no revierte la revisión ya realizada.
           const property=confirmation.property;
@@ -408,8 +410,9 @@ export const AdminPanel: React.FC = () => {
                 body:JSON.stringify({to:property.ownerEmail,subject,body})});
               const data:{sent?:boolean;error?:string}=await response.json().catch(()=>({}));
               if (!response.ok||!data.sent) throw new Error(data.error||'SMTP no confirmó el envío.');
+              setAdminActionNotice('Decisión guardada. El correo de aviso fue aceptado por SMTP para '+property.ownerEmail+'.');
             }catch(err) {
-              setActionError('La decisión se guardó en este navegador, pero el correo no se envió: '+
+              setAdminActionNotice('La revisión se guardó localmente, pero el correo NO fue aceptado por SMTP: '+
                 (err instanceof Error?err.message:'Error del servidor.'));
             }
           }
@@ -811,6 +814,10 @@ export const AdminPanel: React.FC = () => {
               </>
             )}
 
+            {adminActionNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">
+              <span>{adminActionNotice}</span>
+              <button type="button" aria-label="Cerrar aviso" onClick={()=>setAdminActionNotice('')}><X size={18}/></button>
+            </div>}
             {tab === 'owners' && ownerDirectory}
             {tab === 'site' && <SiteContentEditor />}
             {tab === 'mail' && <AdminMailCenter />}
