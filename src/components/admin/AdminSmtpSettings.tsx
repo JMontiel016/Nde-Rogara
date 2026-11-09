@@ -31,17 +31,17 @@ export const AdminSmtpSettings:React.FC=()=>{
     catch(e){setError(e instanceof Error?e.message:'No se pudo cargar la configuración.');}
     finally{setBusy('');}
   };
-  useEffect(()=>{
-    void refresh();
-    const interval=window.setInterval(()=>{ if(!document.hidden && !busy)void refresh(); },60000);
-    return ()=>window.clearInterval(interval);
-  },[]);
+  // No recargar automáticamente: podía sobrescribir valores que el admin estaba editando.
+  // Actualizar solo al entrar o pulsar el botón correspondiente.
+  useEffect(()=>{void refresh();},[]);
   const action=async(type:'save'|'verify'|'test')=>{
     setBusy(type);setError('');setStatus('');
     try{
       if(type==='save'){
         const result=await request<Settings>('/settings','PUT',{...data,password:password||undefined});
-        setData(result);setPassword('');setStatus('Configuración guardada en el servidor.');
+        setData(result);setPassword('');setStatus(result.hasPassword
+          ? 'Configuración almacenada. La contraseña de aplicaciones está protegida y no se muestra de nuevo. Presioná Verificar conexión para comprobar el acceso.'
+          : 'Datos guardados, pero falta configurar la contraseña SMTP.');
       }else if(type==='verify'){
         const response=await request<{message:string}>('/verify','POST');
         setStatus(response.message);
@@ -67,11 +67,12 @@ export const AdminSmtpSettings:React.FC=()=>{
       <label className="text-xs font-bold">Correo remitente<input className={field} type="email" value={data.from} onChange={e=>update('from',e.target.value)} autoComplete="off"/></label>
       <label className="text-xs font-bold">Nombre del remitente<input className={field} value={data.senderName} onChange={e=>update('senderName',e.target.value)}/></label>
       <label className="text-xs font-bold">Correo para respuestas (opcional)<input className={field} type="email" value={data.replyTo} onChange={e=>update('replyTo',e.target.value)}/></label>
-      <label className="text-xs font-bold md:col-span-2">Contraseña de aplicaciones {data.hasPassword?'(configurada; dejar vacío para conservar)':''}<input className={field} type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Ingresá una nueva contraseña de aplicaciones"/></label>
+      <label className="text-xs font-bold md:col-span-2">Contraseña de aplicaciones {data.hasPassword?'(configurada; dejar en blanco para conservarla)':'(necesaria para Gmail)'}<input className={field} type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Ingresá una nueva contraseña de aplicaciones"/></label>
     </div>
     <label className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 text-sm font-bold"><input type="checkbox" checked={data.enabled} onChange={e=>update('enabled',e.target.checked)}/> Activar envío desde el servidor</label>
     <div className="flex flex-wrap gap-2"><button disabled={!!busy} onClick={()=>void action('save')} className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Guardar configuración</button><button disabled={!!busy||!loaded} onClick={()=>void action('verify')} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-50"><ShieldCheck className="mr-2 inline" size={16}/> Verificar conexión</button></div>
     <div className="space-y-3 border-t pt-4"><h4 className="font-black">Prueba de envío</h4><div className="flex flex-col gap-2 sm:flex-row"><input className={field} type="email" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="destinatario@correo.com"/><button disabled={!!busy||!loaded} onClick={()=>void action('test')} className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"><Send size={15}/> Enviar prueba</button></div></div>
+    {data.hasPassword && <p role="status" className="rounded-xl bg-sky-50 p-3 text-xs text-sky-800">La clave de Gmail está guardada del lado del servidor y no se puede recuperar como texto. El campo vacío no la borra. Si Gmail rechaza el acceso, generá una contraseña de aplicaciones nueva y guardala aquí.</p>}
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {status && <p role="status" className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 size={16}/>{status}</p>}
     <div className="border-t pt-4 space-y-3">
