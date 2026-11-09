@@ -1,4 +1,4 @@
-import { firebaseAuth } from './firebaseAuth';
+import { uploadPropertyMedia, MAX_IMAGE_BYTES } from './propertyMedia';
 
 /** Todas las fotos del formulario necesitan revisión antes de mostrarse públicamente. */
 export type ImageDecision =
@@ -6,7 +6,7 @@ export type ImageDecision =
   | { approved: false; reason: string };
 
 const SUPPORTED = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SOURCE_BYTES = 8_000_000;
+const MAX_SOURCE_BYTES = MAX_IMAGE_BYTES;
 
 /**
  * Respaldo exclusivo de desarrollo: reduce una foto válida para la muestra local.
@@ -40,27 +40,14 @@ async function prepareLocalPendingPhoto(file: File): Promise<ImageDecision> {
 
 export async function submitPhotoForModeration(file: File): Promise<ImageDecision> {
   if (!SUPPORTED.includes(file.type)) return { approved: false, reason: 'Solo se admiten fotografías JPG, PNG o WebP.' };
-  if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar menos de 8 MB.' };
+  if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar hasta 50 MB.' };
 
-  const endpoint = import.meta.env.VITE_PHOTO_MODERATION_URL?.trim();
-  // Una instalación sin servidor debe seguir permitiendo preparar anuncios de
-  // la muestra local; estos se mantienen ocultos y no se marcan como verificados.
-  if (!endpoint && import.meta.env.DEV) return prepareLocalPendingPhoto(file);
-  if (!endpoint) return { approved: false, reason: 'La revisión de imágenes no está disponible. No se agregó la fotografía.' };
-
-  const token = await firebaseAuth.getFreshIdToken();
-  if (!token) return { approved: false, reason: 'Para enviar fotografías necesitás iniciar sesión con una cuenta autorizada.' };
-  const body = new FormData();
-  body.append('photo', file);
+  // Firebase Storage guarda las imágenes de todos los usuarios. El archivo
+  // permanece pendiente de revisión visual; subir no equivale a aprobar.
   try {
-    const response = await fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
-    const data: { approved?: boolean; url?: string; reason?: string } = await response.json();
-    if (response.ok && data.approved === true && typeof data.url === 'string' && data.url.startsWith('https://')) {
-      return { approved: true, url: data.url, pendingManualReview: false };
-    }
-    if (response.status === 422) return { approved: false, reason: 'Foto prohibida por la política de la empresa.' };
-    return { approved: false, reason: data.reason || 'No se pudo verificar la fotografía.' };
-  } catch {
-    return { approved: false, reason: 'El servicio de revisión de imágenes no está disponible.' };
+    const url = await uploadPropertyMedia(file, 'image');
+    return { approved: true, url, pendingManualReview: true };
+  } catch (error) {
+    return { approved: false, reason: error instanceof Error ? error.message : 'No se pudo subir la fotografía.' };
   }
 }
