@@ -10,8 +10,9 @@ let ready = false;
 
 function getAdmin() {
   if (ready && admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw Object.assign(new Error('Definí FIREBASE_SERVICE_ACCOUNT_JSON en Vercel.'), { status:503 });
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+    (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 ? Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,'base64').toString('utf8') : '');
+  if (!raw) throw Object.assign(new Error('Configurá FIREBASE_SERVICE_ACCOUNT_BASE64 en Vercel con una clave privada nueva.'), { status:503 });
   let parsed;
   try { parsed = JSON.parse(raw); } catch { throw Object.assign(new Error('FIREBASE_SERVICE_ACCOUNT_JSON no es JSON válido.'),{status:503}); }
   if (parsed.project_id !== 'nde-rogara' || !parsed.private_key || !parsed.client_email) {
