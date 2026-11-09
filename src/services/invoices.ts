@@ -45,6 +45,21 @@ export async function fetchFiscalInvoices(): Promise<FiscalInvoice[]> {
   return [...remote,...local.filter(inv=>!known.has(inv.paymentId))].sort((a,b)=>b.issueDate.localeCompare(a.issueDate));
 }
 
+/** Recupera desde Firebase los comprobantes del usuario, incluso en otro teléfono. */
+export async function fetchMyFiscalInvoices(ownerId:string):Promise<FiscalInvoice[]> {
+  const local=getLocalInvoices().filter(inv=>inv.ownerId===ownerId);
+  const token=await firebaseAuth.getFreshIdToken();
+  if(!token)return local;
+  const response=await fetch('/api/admin/invoices?scope=mine',{
+    headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  const data:{invoices?:FiscalInvoice[];error?:string}=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||'No se pudieron consultar tus comprobantes.');
+  const remote=data.invoices||[];
+  const ids=new Set(remote.map(inv=>inv.paymentId));
+  return [...remote,...local.filter(inv=>!ids.has(inv.paymentId))]
+    .sort((a,b)=>String(b.issueDate||'').localeCompare(String(a.issueDate||'')));
+}
+
 /** Almacena el comprobante asignado por Firestore. No inventa un correlativo local. */
 export function saveConfirmedInvoice(invoice: FiscalInvoice): FiscalInvoice {
   if (!/^001-001-\d{7}$/.test(invoice.documentNumber) ||
