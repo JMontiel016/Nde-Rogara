@@ -117,6 +117,17 @@ function demoCredentialsLocalOnly(): Plugin {
 
 export default defineConfig({
   plugins: [react(), qrCheckoutBridge(), demoCredentialsLocalOnly()],
-  server: { host: '0.0.0.0', port: 5173, strictPort: true },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    // Reenviar API privada de correo al backend. No interfiere con el QR local.
+    proxy: {
+      '/api/admin/mail': {
+        target: process.env.MAIL_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8081',
+        changeOrigin: true,
+      },
+    },
+  },
   preview: { host: '0.0.0.0', port: 4173, strictPort: true },
 });
