@@ -6,8 +6,12 @@ export interface BillingProfile {
   email: string;
   phone: string;
   invoiceRequested: boolean;
+  /** Tipo de documento del receptor, para comprobantes de demostración. */
+  documentType?: 'ci' | 'ruc';
   taxName: string;
+  ci?: string;
   ruc: string;
+  rucDv?: string;
   address: string;
   autoRenew: boolean;
 }
@@ -41,10 +45,21 @@ const PAYMENTS = 'nderogara_payment_requests_v1';
 const ISSUER = 'nderogara_issuer_draft_v1';
 export const BILLING_CHANGED = 'nderogara-billing-updated';
 const notify = () => window.dispatchEvent(new Event(BILLING_CHANGED));
-const defaultProfile: BillingProfile = { fullName: '', email: '', phone: '', invoiceRequested: false, taxName: '', ruc: '', address: '', autoRenew: false };
+const defaultProfile: BillingProfile = { fullName: '', email: '', phone: '', invoiceRequested: true, documentType: 'ci', taxName: '', ci: '', ruc: '', rucDv: '', address: '', autoRenew: false };
 export function loadBillingProfile(ownerId?: string): BillingProfile {
   if (!ownerId) return {...defaultProfile};
-  try { return {...defaultProfile, ...JSON.parse(localStorage.getItem(PROFILE(ownerId)) || '{}')}; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROFILE(ownerId)) || '{}') as Partial<BillingProfile>;
+    const result: BillingProfile = {...defaultProfile, ...raw};
+    // Migración de perfiles anteriores que almacenaban RUC y DV juntos.
+    if (!raw.documentType && raw.invoiceRequested) result.documentType = 'ruc';
+    if (/^\d{3,9}-\d$/.test(result.ruc) && !result.rucDv) {
+      const [ruc, dv] = result.ruc.split('-');
+      result.ruc = ruc;
+      result.rucDv = dv;
+    }
+    return result;
+  }
   catch { return {...defaultProfile}; }
 }
 export function saveBillingProfile(ownerId: string, profile: BillingProfile) {
@@ -54,10 +69,16 @@ export function validateBilling(profile: BillingProfile): string | null {
   if (profile.fullName.trim().length < 4) return 'Ingresá nombre y apellido de la persona responsable del pago.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email.trim())) return 'Ingresá un correo electrónico válido para recibir los comprobantes.';
   if (!/^\+?[0-9 ()-]{8,}$/.test(profile.phone.trim())) return 'Ingresá un celular válido para el contacto de contratación.';
+  // Para esta etapa solo se admite identificación por CI o RUC.
   if (profile.invoiceRequested) {
-    if (profile.taxName.trim().length < 3) return 'Ingresá la razón social o nombre que figurará en la factura.';
-    if (!/^\d{3,9}-\d$/.test(profile.ruc.trim())) return 'Ingresá el RUC con dígito verificador (ejemplo: 1234567-8).';
-    if (profile.address.trim().length < 5) return 'Ingresá la dirección de facturación.';
+    if (profile.taxName.trim().length < 3) return 'Ingresá el nombre o razón social que figurará en el comprobante.';
+    if ((profile.documentType || 'ci') === 'ruc') {
+      if (!/^\d{3,9}$/.test(profile.ruc.trim())) return 'Ingresá el número de RUC sin el dígito verificador.';
+      if (!/^\d$/.test((profile.rucDv || '').trim())) return 'Ingresá el dígito verificador del RUC (un número).';
+    } else if (!/^\d{3,10}$/.test((profile.ci || '').trim())) {
+      return 'Ingresá un número de cédula de identidad válido.';
+    }
+    // La dirección no es obligatoria para este comprobante de muestra.
   }
   return null;
 }
@@ -100,7 +121,7 @@ export function printProforma(record: PaymentRecord): boolean {
   const doc = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Proforma ${html(record.id.slice(0,8))}</title><style>
   @page{size:A4;margin:17mm}*{box-sizing:border-box}body{font:13px Arial,sans-serif;color:#17243b;margin:0}.sheet{max-width:850px;margin:auto;position:relative}.watermark{position:fixed;top:46%;left:8%;transform:rotate(-30deg);font-size:34px;color:#e5e7eb;font-weight:800;z-index:-1}.row{display:flex;justify-content:space-between;gap:20px}.head{padding-bottom:15px;border-bottom:3px solid #0e7490}.brand{font-size:27px;font-weight:900;color:#0e7490}.pill{padding:7px 10px;border:1px solid #f59e0b;background:#fffbeb;font-weight:800}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.panel{border:1px solid #d8dfe8;border-radius:8px;padding:14px}small{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:13px;border-bottom:1px solid #d9e2e9;text-align:left}th{background:#eff6fa}.total{text-align:right;font-size:21px;font-weight:900;margin:20px 0}.notice{padding:12px;border:1px solid #f59e0b;background:#fffbeb;margin:24px 0}.muted{color:#64748b;line-height:1.6}button{padding:11px 19px;background:#0e7490;color:white;border:0;border-radius:9px;font-weight:bold;cursor:pointer}@media print{button{display:none}}
   </style></head><body><div class="sheet"><div class="watermark">SIN VALIDEZ FISCAL</div><div class="row head"><div>${issuer.logoDataUrl?.startsWith('data:image/') ? `<img src="${html(issuer.logoDataUrl)}" alt="Logo del emisor" style="max-height:60px;max-width:160px;object-fit:contain;display:block;margin-bottom:10px">` : ''}<div class="brand">${html(issuer.logoText || 'Nde Rogarã')}</div><b>${html(issuer.legalName || 'Emisor por configurar')}</b><p>${html(issuer.address || 'Dirección pendiente')}<br>${html(issuer.phone || '')}</p></div><div style="text-align:right"><h2>PROFORMA / SOLICITUD DE PAGO</h2><span class="pill">NO ES FACTURA ELECTRÓNICA</span><p>RUC emisor: ${html(issuer.ruc || 'No configurado')}<br>Timbrado (referencia): ${html(issuer.timbrado || 'Sin cargar')}<br>Establecimiento: ${html(issuer.establishment || 'Sin cargar')}</p></div></div>
-  <div class="grid"><section class="panel"><small>Datos del cliente</small><p><b>${html(buyer.invoiceRequested ? buyer.taxName : buyer.fullName)}</b><br>RUC: ${html(buyer.invoiceRequested ? buyer.ruc : 'No solicitado')}<br>${html(buyer.address)}<br>${html(buyer.email)}<br>${html(buyer.phone)}</p></section><section class="panel"><small>Información de la solicitud</small><p>Referencia: ${html(record.id.slice(0,8).toUpperCase())}<br>Fecha: ${html(new Date(record.createdAt).toLocaleString('es-PY'))}<br>Estado: ${html(record.status === 'draft' ? 'Borrador' : 'Inicio de pago pendiente de confirmar')}<br>Método: ${html(record.method === 'card' ? 'Tarjeta (pasarela)' : 'QR (pasarela)')}</p></section></div>
+  <div class="grid"><section class="panel"><small>Datos del cliente</small><p><b>${html(buyer.invoiceRequested ? buyer.taxName : buyer.fullName)}</b><br>${html(buyer.documentType === 'ruc' ? 'RUC' : 'CI')}: ${html(buyer.documentType === 'ruc' ? [buyer.ruc,buyer.rucDv].filter(Boolean).join('-') : buyer.ci || 'No informado')}<br>${html(buyer.address)}<br>${html(buyer.email)}<br>${html(buyer.phone)}</p></section><section class="panel"><small>Información de la solicitud</small><p>Referencia: ${html(record.id.slice(0,8).toUpperCase())}<br>Fecha: ${html(new Date(record.createdAt).toLocaleString('es-PY'))}<br>Estado: ${html(record.status === 'draft' ? 'Borrador' : 'Inicio de pago pendiente de confirmar')}<br>Método: ${html(record.method === 'card' ? 'Tarjeta (pasarela)' : 'QR (pasarela)')}</p></section></div>
   <table><thead><tr><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody><tr><td>Publicación ${html(record.planName)}</td><td>1</td><td>Gs. ${money(record.amount)}</td><td>Gs. ${money(record.amount)}</td></tr></tbody></table><div class="total">TOTAL: Gs. ${money(record.amount)}</div><div class="notice"><b>Documento informativo, sin valor tributario.</b><br>La factura electrónica válida será emitida por un proveedor autorizado, con timbrado, numeración, CDC, XML firmado y aprobación SIFEN cuando corresponda. No existe constancia de pago confirmado en esta proforma.</div><p class="muted">Este documento se generó para que el cliente verifique los datos antes del pago. No debe entregarse como factura ni como KuDE.</p><button onclick="window.print()">Imprimir / Guardar como PDF</button></div></body></html>`;
   newWindow.document.write(doc); newWindow.document.close(); return true;
 }
