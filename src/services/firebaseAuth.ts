@@ -19,6 +19,7 @@ import {
   signOut as fbSignOut, 
   onAuthStateChanged as fbOnAuthStateChanged,
   updateProfile,
+  getIdTokenResult,
   Auth,
   User as FirebaseSDKUser
 } from 'firebase/auth';
@@ -157,7 +158,8 @@ export class FirebaseAuthService {
         fbOnAuthStateChanged(this.auth, async (sdkUser: FirebaseSDKUser | null) => {
           if (sdkUser) {
             const token = await sdkUser.getIdToken();
-            const existingRole: UserRole = this.currentUser?.role || 'tenant';
+            const claims = await getIdTokenResult(sdkUser);
+            const existingRole: UserRole = claims.claims.admin === true ? 'admin' : 'landlord';
             const user: FirebaseUser = {
               uid: sdkUser.uid,
               email: sdkUser.email,
@@ -202,6 +204,13 @@ export class FirebaseAuthService {
     return this.auth?.currentUser ? this.auth.currentUser.getIdToken() : null;
   }
 
+  /** Rol comprobado con claims firmados por Firebase, nunca por email/localStorage. */
+  async isVerifiedAdmin(): Promise<boolean> {
+    if (!this.auth?.currentUser) return false;
+    const token = await getIdTokenResult(this.auth.currentUser, true);
+    return token.claims.admin === true;
+  }
+
   /**
    * Suscripción reactiva a cambios de sesión
    */
@@ -230,6 +239,7 @@ export class FirebaseAuthService {
         provider.setCustomParameters({ prompt: 'select_account' });
         const result = await signInWithPopup(this.auth, provider);
         const token = await result.user.getIdToken();
+        const isAdmin = (await getIdTokenResult(result.user)).claims.admin === true;
 
         const user: FirebaseUser = {
           uid: result.user.uid,
@@ -271,7 +281,7 @@ export class FirebaseAuthService {
           email: result.user.email,
           displayName: result.user.displayName || email.split('@')[0],
           photoURL: result.user.photoURL,
-          role,
+          role: isAdmin ? 'admin' : 'landlord',
           providerId: 'password',
           emailVerified: result.user.emailVerified,
           accessToken: token
