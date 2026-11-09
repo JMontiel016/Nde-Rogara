@@ -13,6 +13,8 @@ export interface BillingProfile {
   ruc: string;
   rucDv?: string;
   address: string;
+  /** Código postal opcional en el perfil; obligatorio solo al usar tarjeta en este checkout. */
+  postalCode?: string;
   autoRenew: boolean;
 }
 export interface PaymentRecord {
@@ -145,15 +147,76 @@ export function readDemoSavedCard(ownerId?:string):DemoSavedCard|null {
 export function saveDemoCardReference(ownerId:string,last4:string,brand='Visa') {
   localStorage.setItem(CARD_KEY(ownerId),JSON.stringify({brand,last4,savedAt:new Date().toISOString()} satisfies DemoSavedCard));notify();
 }
-/** Demo con números de tarjetas de ensayo exclusivamente: no captura datos bancarios reales. */
+/** 
+ * Valida solo la apariencia de una tarjeta ficticia.
+ * No verifica cuentas bancarias, no transmite PAN y no realiza cobros.
+ * Acepta secuencias de prueba variadas en vez de dos números fijos.
+ */
 export function validateDemoCard(number:string,expiration:string,cvv:string):string|null {
-  const digits=number.replace(/\s/g,'');
-  if(!['4242424242424242','5555555555554444'].includes(digits))return 'Utilizá solo la tarjeta de ejemplo indicada; no ingreses tarjetas reales.';
+  const digits=number.replace(/\D/g,'');
+  const amex=/^3[47]/.test(digits);
+  const mastercard=/^5[1-5]/.test(digits)||/^(222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)/.test(digits);
+  const visa=/^4/.test(digits);
+  const expected=amex ? [15] : mastercard ? [16] : visa ? [13,16,19] : [13,14,15,16,17,18,19];
+  if(!expected.includes(digits.length))return amex
+    ? 'American Express utiliza 15 dígitos.'
+    : mastercard ? 'Mastercard utiliza 16 dígitos.'
+    : 'Ingresá un número de entre 13 y 19 dígitos, según la marca de tarjeta.';
   const match=/^(0[1-9]|1[0-2])\/(\d{2})$/.exec(expiration);
-  if(!match)return 'Ingresá un vencimiento válido en formato MM/AA.';
+  if(!match)return 'Ingresá el vencimiento en formato MM/AA (mes válido).';
   const end=new Date(2000+Number(match[2]),Number(match[1]),0,23,59,59);
-  if(end.getTime()<Date.now())return 'La fecha de vencimiento debe ser posterior a hoy.';
-  if(!/^\d{3}$/.test(cvv))return 'Ingresá el código de tres dígitos de demostración.';
+  if(end.getTime()<Date.now())return 'La fecha de vencimiento debe ser posterior al mes actual.';
+  if(!new RegExp(amex?'^\\d{4}
+
+
+/**
+ * Validación de formato exclusivamente en memoria, sin procesar fondos ni
+ * transmitir PAN, vencimiento o CVV. No reemplaza a una pasarela tokenizada.
+ */
+export function validateCardFormat(number:string, expiration:string, cvv:string):string|null {
+  const digits=number.replace(/\s/g,'');
+  if(!/^\d{13,19}$/.test(digits))return 'Completá el número de tarjeta.';
+  let sum=0, alternate=false;
+  for(let i=digits.length-1;i>=0;i--){
+    let digit=Number(digits[i]);
+    if(alternate){digit*=2;if(digit>9)digit-=9;}
+    sum+=digit;alternate=!alternate;
+  }
+  if(sum%10!==0)return 'Revisá el número de tarjeta ingresado.';
+  const match=/^(0[1-9]|1[0-2])\/(\d{2})$/.exec(expiration);
+  if(!match)return 'Ingresá el vencimiento en formato MM/AA.';
+  const end=new Date(2000+Number(match[2]),Number(match[1]),0,23,59,59);
+  if(end.getTime()<Date.now())return 'La tarjeta se encuentra vencida.';
+  if(!/^\d{3,4}$/.test(cvv))return 'Ingresá el código de seguridad de la tarjeta.';
+  return null;
+}
+:'^\\d{3}
+
+
+/**
+ * Validación de formato exclusivamente en memoria, sin procesar fondos ni
+ * transmitir PAN, vencimiento o CVV. No reemplaza a una pasarela tokenizada.
+ */
+export function validateCardFormat(number:string, expiration:string, cvv:string):string|null {
+  const digits=number.replace(/\s/g,'');
+  if(!/^\d{13,19}$/.test(digits))return 'Completá el número de tarjeta.';
+  let sum=0, alternate=false;
+  for(let i=digits.length-1;i>=0;i--){
+    let digit=Number(digits[i]);
+    if(alternate){digit*=2;if(digit>9)digit-=9;}
+    sum+=digit;alternate=!alternate;
+  }
+  if(sum%10!==0)return 'Revisá el número de tarjeta ingresado.';
+  const match=/^(0[1-9]|1[0-2])\/(\d{2})$/.exec(expiration);
+  if(!match)return 'Ingresá el vencimiento en formato MM/AA.';
+  const end=new Date(2000+Number(match[2]),Number(match[1]),0,23,59,59);
+  if(end.getTime()<Date.now())return 'La tarjeta se encuentra vencida.';
+  if(!/^\d{3,4}$/.test(cvv))return 'Ingresá el código de seguridad de la tarjeta.';
+  return null;
+}
+).test(cvv))return amex
+    ? 'American Express requiere 4 dígitos de seguridad.'
+    : 'El código de seguridad debe tener 3 dígitos.';
   return null;
 }
 
