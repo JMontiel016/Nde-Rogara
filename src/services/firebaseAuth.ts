@@ -54,15 +54,31 @@ function notifyListeners(user: FirebaseUser | null) {
 // Limpiador defensivo para remover comillas o espacios accidentales en .env
 const cleanEnv = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
 
-// Configuración leída de variables de entorno Vite (.env / .env.local)
+/**
+ * Identificadores públicos de la aplicación web Firebase Nde Rogarã.
+ * Son parámetros del SDK del navegador, NO credenciales de Firebase Admin.
+ * Se pueden sobrescribir por variables VITE_FIREBASE_* para otros entornos.
+ * Las contraseñas y claves privadas deben permanecer fuera del repositorio.
+ */
+const firebaseWebDefaults = {
+  apiKey: 'AIzaSyADh7s59Nl_nTqDxyqA4_6UI51BSpx4T4Y',
+  authDomain: 'nde-rogara.firebaseapp.com',
+  projectId: 'nde-rogara',
+  storageBucket: 'nde-rogara.firebasestorage.app',
+  messagingSenderId: '473375088035',
+  appId: '1:473375088035:web:9bf2bb310507c8d79b4e16',
+  measurementId: 'G-XJM2R1MY7K'
+};
+
+// La configuración pública de Nde Rogarã funciona en Vercel sin variables adicionales.
 export const firebaseConfig = {
-  apiKey: cleanEnv(import.meta.env.VITE_FIREBASE_API_KEY),
-  authDomain: cleanEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
-  projectId: cleanEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID),
-  storageBucket: cleanEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
-  messagingSenderId: cleanEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
-  appId: cleanEnv(import.meta.env.VITE_FIREBASE_APP_ID),
-  measurementId: cleanEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID)
+  apiKey: cleanEnv(import.meta.env.VITE_FIREBASE_API_KEY) || firebaseWebDefaults.apiKey,
+  authDomain: cleanEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN) || firebaseWebDefaults.authDomain,
+  projectId: cleanEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID) || firebaseWebDefaults.projectId,
+  storageBucket: cleanEnv(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET) || firebaseWebDefaults.storageBucket,
+  messagingSenderId: cleanEnv(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID) || firebaseWebDefaults.messagingSenderId,
+  appId: cleanEnv(import.meta.env.VITE_FIREBASE_APP_ID) || firebaseWebDefaults.appId,
+  measurementId: cleanEnv(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) || firebaseWebDefaults.measurementId
 };
 
 // Determina si el proyecto tiene credenciales de Firebase configuradas
