@@ -35,7 +35,7 @@ const selectedIcon = L.divIcon({
 
 const MapMove: React.FC<{ point: [number, number]; zoom: number }> = ({ point, zoom }) => {
   const map = useMap();
-  useEffect(() => { map.setView(point, zoom, { animate: true }); const id = window.setTimeout(() => map.invalidateSize(), 120); return () => clearTimeout(id); }, [map, point, zoom]);
+  useEffect(() => { map.setView(point, zoom, { animate: true }); const id = window.setTimeout(() => map.invalidateSize({pan:false}), 200); return () => clearTimeout(id); }, [map, point, zoom]);
   return null;
 };
 
@@ -170,7 +170,7 @@ export const HomeMapLocationPicker: React.FC<Props> = ({ isOpen, onClose, select
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-label="Explorar propiedades por ubicación">
-      <section className="flex max-h-[96vh] w-full max-w-6xl flex-col overflow-y-auto rounded-[26px] bg-white shadow-2xl">
+      <section className="flex h-[min(92vh,850px)] w-full max-w-6xl flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl">
         <header className="flex flex-col gap-4 bg-[#0e213d] px-5 py-5 text-white sm:px-7">
           <div className="flex items-center justify-between gap-4">
             <div><h2 className="text-xl font-black">Explorá inmuebles en el mapa</h2><p className="mt-1 text-xs text-slate-300">Buscá una ciudad o seleccioná un punto en el mapa para consultar las propiedades de esa zona.</p></div>
@@ -183,9 +183,9 @@ export const HomeMapLocationPicker: React.FC<Props> = ({ isOpen, onClose, select
             <button type="submit" disabled={searching} className="rounded-xl bg-sky-500 px-5 text-sm font-bold text-white transition hover:bg-sky-600 disabled:opacity-60">{searching ? <Loader2 className="animate-spin" size={18}/> : <><Search className="mr-1 inline" size={16}/> Buscar</>}</button>
           </form>
         </header>
-        <div className="relative min-h-[230px] flex-1 bg-slate-100 sm:min-h-[420px]" style={{height:'46vh',maxHeight:'560px'}}>
-          <MapContainer center={point} zoom={zoom} scrollWheelZoom style={{ width:'100%', height:'100%' }}>
-            <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+        <div className="relative min-h-[280px] flex-1 bg-slate-100" style={{height:'min(54vh,560px)'}}>
+          <MapContainer center={point} zoom={zoom} scrollWheelZoom className="h-full w-full" style={{ width:'100%', height:'100%', minHeight:'280px' }}>
+            <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19}/>
             <MapMove point={point} zoom={zoom}/><MapClick onPoint={(lat, lng) => { void selectMapPoint(lat, lng); }}/>
             {visible.map(p => {
               const ownerId = p.ownerId || registeredUsers.find(user => normalizedPlace(user.email) === normalizedPlace(p.ownerEmail))?.id;
