@@ -29,7 +29,9 @@ function demoCardBrand(number: string): string {
   return digits ? 'Otra tarjeta' : 'Tipo de tarjeta';
 }
 function formatDemoCardNumber(value: string): string {
-  const digits=value.replace(/\D/g,'').slice(0,19);
+  const raw=value.replace(/\D/g,'');
+  const limit=/^3[47]/.test(raw)?15:(/^5[1-5]/.test(raw)||/^(222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)/.test(raw))?16:19;
+  const digits=raw.slice(0,limit);
   return /^3[47]/.test(digits)
     ? [digits.slice(0,4),digits.slice(4,10),digits.slice(10,15)].filter(Boolean).join(' ')
     : digits.replace(/(.{4})/g,'$1 ').trim();
@@ -68,6 +70,7 @@ export const PlansPage: React.FC = () => {
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
   const [securityCode, setSecurityCode] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [cardholder, setCardholder] = useState('');
   const [rememberCard, setRememberCard] = useState(false);
   const [qrSession, setQrSession] = useState<QrSession | null>(null);
@@ -143,7 +146,7 @@ export const PlansPage: React.FC = () => {
       return;
     }
     setSelected(id); setStep(1); setAccepted(false); setMethod('card'); setCardMode('once');
-    setCardholder(''); setCardNumber(''); setExpiry(''); setSecurityCode(''); setRememberCard(false);
+    setCardholder(''); setCardNumber(''); setExpiry(''); setSecurityCode(''); setPostalCode(''); setRememberCard(false);
     setQrSession(null); setQrStatus(''); confirmedRef.current = false;
     setError(''); setShowPolicy(false); setSuccessInvoice(null);
   };
@@ -202,6 +205,7 @@ export const PlansPage: React.FC = () => {
     if (cardMode === 'saved' && !savedCard) { setError('No hay una tarjeta guardada.'); return; }
     if (cardMode === 'once') {
       if (cardholder.trim().length < 4) { setError('Ingresá el nombre completo del titular de la tarjeta.'); return; }
+      if (!/^\d{6}$/.test(postalCode)) { setError('Ingresá un código postal paraguayo de 6 dígitos.'); return; }
       const cardIssue = validateDemoCard(cardNumber, expiry, securityCode);
       if (cardIssue) { setError(cardIssue); return; }
     } else if (!/^\d{3,4}$/.test(securityCode)) {
@@ -344,19 +348,35 @@ export const PlansPage: React.FC = () => {
                     <label className={labelClass}>Número de tarjeta *
                       <div className="relative">
                         <input className={`${inputClass} pr-32`} value={cardNumber} onChange={(event) => setCardNumber(formatDemoCardNumber(event.target.value))} inputMode="numeric" autoComplete="off" placeholder="0000 0000 0000 0000" maxLength={23} />
-                        <span aria-live="polite" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-sky-50 px-2 py-1 text-[11px] font-black text-sky-700">{demoCardBrand(cardNumber)}</span>
+                        <span aria-live="polite" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex min-h-8 items-center rounded-lg border border-slate-100 bg-white px-2 shadow-sm">
+                          {demoCardBrand(cardNumber) === 'Mastercard' ? (
+                            <span className="flex items-center" aria-label="Mastercard"><span className="h-5 w-5 rounded-full bg-red-500"/><span className="-ml-2 h-5 w-5 rounded-full bg-amber-400/90"/></span>
+                          ) : demoCardBrand(cardNumber) === 'Visa' ? (
+                            <span className="text-sm font-black italic tracking-tighter text-blue-800">VISA</span>
+                          ) : demoCardBrand(cardNumber) === 'American Express' ? (
+                            <span className="rounded bg-blue-700 px-1 py-1 text-[9px] font-black leading-none text-white">AMEX</span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500"><CreditCard size={14}/>{demoCardBrand(cardNumber)}</span>
+                          )}
+                        </span>
                       </div>
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <label className={labelClass}>Vencimiento (MM/AA) *<input className={inputClass} value={expiry} onChange={(event) => setExpiry(formatDemoExpiry(event.target.value))} autoComplete="off" placeholder="MM/AA"/></label>
-                      <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
+                      <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, demoCardBrand(cardNumber) === 'American Express' ? 4 : 3))} type="password" inputMode="numeric" autoComplete="off" placeholder={demoCardBrand(cardNumber) === 'American Express' ? '4 dígitos' : '3 dígitos'}/></label>
                     </div>
                     <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" checked={rememberCard} onChange={(event) => setRememberCard(event.target.checked)}/><span>Recordar la tarjeta para una próxima contratación (solo sus últimos cuatro dígitos).</span></label>
                   </> : <>
                     <p className="rounded-xl bg-sky-50 p-3 text-sm font-semibold text-sky-900">{savedCard?.brand} •••• {savedCard?.last4}</p>
                     <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
                   </>}
-                  <p className="rounded-xl bg-sky-50 p-3 text-[11px] leading-5 text-sky-900"><strong>Pago de demostración — sin cobro real.</strong> Usá únicamente números de prueba: Visa 4242 4242 4242 4242 o Mastercard 5555 5555 5555 4444. No ingreses tarjetas reales. El número, la fecha y el código de seguridad no se guardan ni se envían.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className={labelClass}>Código postal (Paraguay) *
+                      <input className={inputClass} value={postalCode} onChange={event=>setPostalCode(event.target.value.replace(/\D/g,'').slice(0,6))} maxLength={6} inputMode="numeric" autoComplete="off" placeholder="6 dígitos"/>
+                    </label>
+                    <div className="flex items-end pb-2 text-[11px] leading-4 text-slate-500">Se utiliza para validar el formato del formulario.</div>
+                  </div>
+                  <p className="text-[11px] leading-5 text-slate-500">No introduzcas tarjetas reales. Los números solo se usan en esta pantalla y no se transmiten a ningún banco.</p>
                 </section> : <section className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
                   <h4 className="font-black text-slate-900">Pago mediante código QR</h4>
                   <p className="text-xs leading-5 text-slate-600">Generá el QR, descargalo o escanealo con tu teléfono. El enlace permitirá confirmar la solicitud de contratación.</p>
@@ -432,6 +452,7 @@ export const PlansPage: React.FC = () => {
             {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
               <button type="button" onClick={() => { setStep(1); setError(''); setQrSession(null); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"><ArrowLeft size={16}/> Volver</button>
+              {method === 'card' && <p className="basis-full text-[11px] font-semibold text-amber-800">Entorno de prueba: al confirmar se activará un plan de muestra; no habrá ningún cargo bancario.</p>}
               {method === 'card' ? <button type="button" disabled={busy || !accepted} onClick={payCard} className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-5 py-3 text-sm font-black text-white hover:bg-sky-700 disabled:opacity-50">{busy ? 'Registrando…' : 'Confirmar pago con tarjeta'} <ArrowRight size={16}/></button> : <span className="text-xs font-semibold text-slate-500">La contratación continuará al confirmar desde el QR.</span>}
             </div>
           </>}
