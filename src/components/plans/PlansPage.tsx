@@ -16,6 +16,7 @@ import {
 } from '../../services/billing';
 import { createDemoInvoice, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
 import { preparePlanMail } from '../../services/mailQueue';
+import { sendReceiptEmail } from '../../services/receiptDelivery';
 import { downloadQr, makeQrSvg } from '../../services/qrCode';
 
 const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100';
@@ -81,6 +82,10 @@ export const PlansPage: React.FC = () => {
   const [error, setError] = useState('');
   const [pageNotice, setPageNotice] = useState('');
   const [successInvoice, setSuccessInvoice] = useState<FiscalInvoice | null>(null);
+  const [receiptStatus, setReceiptStatus] = useState<'sending' | 'sent' | 'failed' | ''>('');
+  const [receiptError, setReceiptError] = useState('');
+  const [receiptPlanId, setReceiptPlanId] = useState('');
+  const [receiptMethod, setReceiptMethod] = useState<'card' | 'qr'>('card');
 
   useEffect(() => {
     const profile = loadBillingProfile(currentUser?.id);
@@ -148,7 +153,7 @@ export const PlansPage: React.FC = () => {
     setSelected(id); setStep(1); setAccepted(false); setMethod('card'); setCardMode('once');
     setCardholder(''); setCardNumber(''); setExpiry(''); setSecurityCode(''); setPostalCode(''); setRememberCard(false);
     setQrSession(null); setQrStatus(''); confirmedRef.current = false;
-    setError(''); setShowPolicy(false); setSuccessInvoice(null);
+    setError(''); setShowPolicy(false); setSuccessInvoice(null); setReceiptStatus(''); setReceiptError('');
   };
 
   const field = <K extends keyof BillingProfile>(key: K, value: BillingProfile[K]) =>
@@ -158,7 +163,19 @@ export const PlansPage: React.FC = () => {
     setMethod(next); setError(''); setQrSession(null); setQrStatus(''); confirmedRef.current = false;
   };
 
-  const finishPayment = (chosenMethod: PaymentMethod) => {
+  const deliverReceipt = async (invoice: FiscalInvoice, planId: string, method: 'card' | 'qr') => {
+    setReceiptStatus('sending');
+    setReceiptError('');
+    try {
+      await sendReceiptEmail(invoice, planId, method);
+      setReceiptStatus('sent');
+    } catch (cause) {
+      setReceiptStatus('failed');
+      setReceiptError(cause instanceof Error ? cause.message : 'No se pudo enviar el comprobante.');
+    }
+  };
+
+  const finishPayment = async (chosenMethod: PaymentMethod) => {
     if (!currentUser || !plan || !accepted || busy) return;
     // Un QR ajeno nunca puede habilitar un plan en otra cuenta.
     if (chosenMethod === 'qr' && (!qrSession || qrSession.ownerId !== currentUser.id)) {
@@ -194,7 +211,10 @@ export const PlansPage: React.FC = () => {
       }
       // Limpiar inmediatamente las entradas sensibles tras la operación.
       setCardNumber(''); setExpiry(''); setSecurityCode(''); setCardholder('');
+      setReceiptPlanId(plan.id); setReceiptMethod(chosenMethod);
       setSuccessInvoice(invoice); setSelected(null); setShowPolicy(false); setQrSession(null); setRevision((v) => v + 1);
+      // Envío automático: jamás se marca como enviado sin confirmación de SMTP.
+      await deliverReceipt(invoice, plan.id, chosenMethod);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo registrar la contratación.');
     } finally { setBusy(false); }
@@ -212,7 +232,7 @@ export const PlansPage: React.FC = () => {
     } else if (!/^\d{3,4}$/.test(securityCode)) {
       setError('Ingresá el código de seguridad de la tarjeta.'); return;
     }
-    finishPayment('card');
+    void finishPayment('card');
   };
 
   const generateQr = async () => {
@@ -259,7 +279,7 @@ export const PlansPage: React.FC = () => {
           const issue = validateBilling(billing);
           if (issue) { setError(issue); return; }
           confirmedRef.current = true;
-          finishPayment('qr');
+          void finishPayment('qr');
         }
       } catch (cause) {
         if (!cancelled) setQrStatus(cause instanceof Error ? cause.message : 'No se pudo consultar el estado del QR.');
@@ -508,6 +528,14 @@ export const PlansPage: React.FC = () => {
         <h2 className="mt-5 text-2xl font-black text-slate-950">Contratación registrada</h2>
         <p className="mt-3 text-sm leading-6 text-slate-600">Tu plan está disponible para gestionar publicaciones. Encontrarás el comprobante en la sección de Facturas.</p>
         <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-left text-sm"><p className="font-black">{successInvoice.planName}</p><p className="mt-1 text-slate-500">{successInvoice.customerName} · {successInvoice.customerRuc} · {formatGs(successInvoice.amount)}</p><p className="mt-1 text-xs text-slate-500">Comprobante {successInvoice.documentNumber}</p></div>
+        <div className={`mt-4 rounded-xl px-4 py-3 text-left text-sm ${receiptStatus === 'sent' ? 'bg-emerald-50 text-emerald-800' : receiptStatus === 'failed' ? 'bg-rose-50 text-rose-800' : 'bg-sky-50 text-sky-800'}`} role="status" aria-live="polite">
+          {receiptStatus === 'sending' ? 'Enviando comprobante PDF a tu correo…'
+            : receiptStatus === 'sent' ? `Comprobante PDF aceptado por el servidor de correo para ${successInvoice.customerEmail}. Revisá tu bandeja de entrada y spam.`
+            : receiptStatus === 'failed' ? `No se pudo enviar el comprobante: ${receiptError}`
+            : 'Preparando el envío del comprobante…'}
+          {receiptStatus === 'failed' && <button type="button" className="mt-2 block font-bold underline"
+            onClick={() => void deliverReceipt(successInvoice, receiptPlanId, receiptMethod)}>Reintentar envío del comprobante</button>}
+        </div>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button type="button" onClick={() => { void viewFiscalInvoice(successInvoice.id).catch((cause) => setPageNotice(cause instanceof Error ? cause.message : 'No se pudo abrir el comprobante.')); }} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold hover:bg-slate-50">Ver comprobante</button>
           <button type="button" onClick={() => { setSuccessInvoice(null); setCurrentView('landlord-rentals'); }} className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-black text-white hover:bg-sky-700">Ir a mis publicaciones</button>
