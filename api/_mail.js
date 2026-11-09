@@ -8,7 +8,7 @@ const json = (res, code, data) => res.status(code).json(data);
 const collection = 'private_configuration';
 let ready = false;
 
-function getAdmin() {
+export function getAdmin() {
   if (ready && admin.apps.length) return admin;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
     (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 ? Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64,'base64').toString('utf8') : '');
@@ -39,7 +39,7 @@ function decrypt(value) {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(cipherText),decipher.final()]).toString('utf8');
 }
-function defaults() {
+export function defaults() {
   const user=process.env.SMTP_USER||'016.jmma@gmail.com';
   return {provider:'gmail',host:process.env.SMTP_HOST||'smtp.gmail.com',
     port:Number(process.env.SMTP_PORT||465),secure:Number(process.env.SMTP_PORT||465)===465,
@@ -49,7 +49,7 @@ function publicConfig(config) {
   const {passwordEncrypted, ...rest}=config;
   return {...rest,hasPassword:!!passwordEncrypted||!!process.env.SMTP_PASS};
 }
-function transport(config) {
+export function transport(config) {
   const password=config.passwordEncrypted ? decrypt(config.passwordEncrypted) : process.env.SMTP_PASS;
   if(!config.enabled||!password||!config.host||!config.user) {
     throw Object.assign(new Error('Configuración incompleta. Guardá la contraseña de aplicaciones o definí SMTP_PASS en Vercel.'),{status:503});
@@ -71,7 +71,7 @@ function validate(input) {
       throw Object.assign(new Error('Revisá los campos SMTP.'),{status:400});
     }
 }
-async function log(db,type,to,status,code='') {
+export async function log(db,type,to,status,code='') {
   await db.collection('mail_delivery_logs').add({type,to,status,errorCode:code,
     createdAt:admin.firestore.FieldValue.serverTimestamp()});
 }
