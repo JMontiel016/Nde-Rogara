@@ -6,9 +6,7 @@ import { effectiveOwnerPlan, ownerHasProperty, readOwnerPlan, ownerMediaUsage, c
 import { socialShareLinks } from '../../services/socialLinks';
 import { formatGs } from '../../utils/formatters';
 import { getLocalMetrics } from '../../services/localMetrics';
-import { getLocalInvoices, viewFiscalInvoice, INVOICES_CHANGED, type FiscalInvoice } from '../../services/invoices';
-import { getPayments } from '../../services/billing';
-import { sendReceiptEmail } from '../../services/receiptDelivery';
+import { getLocalInvoices, viewFiscalInvoice, INVOICES_CHANGED } from '../../services/invoices';
 import { PrivateDocumentRecord, listPrivateDocuments, storePrivateDocument, removePrivateDocument, downloadPrivateDocument } from '../../services/privateDocuments';
 
 export const OwnerDashboard: React.FC = () => {
@@ -19,7 +17,6 @@ export const OwnerDashboard: React.FC = () => {
   const [planVersion, setPlanVersion] = useState(0);
   const [message,setMessage] = useState('');
   const [invoiceRevision,setInvoiceRevision] = useState(0);
-  const [receiptBusy,setReceiptBusy] = useState('');
   const [receiptNotice,setReceiptNotice] = useState('');
   useEffect(() => { const refresh = () => setInvoiceRevision(v=>v+1); window.addEventListener(INVOICES_CHANGED, refresh); return ()=>window.removeEventListener(INVOICES_CHANGED,refresh); }, []);
   useEffect(() => { const cb = () => setPlanVersion(v => v + 1); window.addEventListener('nderogara-plan-updated', cb); return () => window.removeEventListener('nderogara-plan-updated', cb); }, []);
@@ -56,26 +53,15 @@ export const OwnerDashboard: React.FC = () => {
     }
     togglePropertyStatus(p.id);
   };
-  const sendAgain = async (invoice: FiscalInvoice) => {
-    const payment = getPayments().find(p=>p.id===invoice.paymentId && p.ownerId===currentUser.id);
-    if (!payment) { setReceiptNotice('No se encontró la contratación asociada a este comprobante en este navegador.'); return; }
-    setReceiptBusy(invoice.id); setReceiptNotice('Enviando comprobante…');
-    try {
-      await sendReceiptEmail(invoice, payment.planId, payment.method);
-      setReceiptNotice(`El servidor aceptó el comprobante ${invoice.documentNumber} para ${invoice.customerEmail}.`);
-    } catch(err) { setReceiptNotice(err instanceof Error ? err.message : 'No se pudo enviar el comprobante.'); }
-    finally { setReceiptBusy(''); }
-  };
   return <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-20 space-y-7">
     <div className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center"><div><h1 className="text-3xl font-black text-slate-900">Mis publicaciones</h1><p className="text-sm text-slate-500 mt-1">Administrá tus avisos, fotos, disponibilidad y documentos privados.</p></div><button onClick={() => plan || userRole === 'admin' ? setIsPublishModalOpen(true) : setCurrentView('plans')} className="rounded-xl bg-brand-600 text-white px-5 py-3 font-bold text-sm flex items-center gap-2 justify-center"><Plus className="w-4 h-4" />Nuevo inmueble</button></div>
     {myInvoices.length > 0 && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-      <div><h2 className="text-base font-black text-slate-900">Mis comprobantes</h2><p className="mt-1 text-xs text-slate-500">Consultá tus comprobantes locales o solicitá el envío de su PDF por correo. Los envíos se registran en el servidor.</p></div>
+      <div><h2 className="text-base font-black text-slate-900">Mis comprobantes</h2><p className="mt-1 text-xs text-slate-500">Consultá y descargá tus comprobantes. El envío automático se realiza al contratar; los reenvíos posteriores son exclusivos de Administración.</p></div>
       {receiptNotice && <p className="rounded-xl bg-sky-50 p-3 text-xs text-sky-900" role="status">{receiptNotice}</p>}
       <div className="space-y-2">{myInvoices.slice(0,10).map(invoice=><div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
         <div><p className="text-sm font-bold">{invoice.documentNumber} · {invoice.planName}</p><p className="text-xs text-slate-500">{invoice.customerEmail} · {formatGs(invoice.amount)}</p></div>
         <div className="flex gap-2">
           <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold" onClick={()=>void viewFiscalInvoice(invoice.id).catch(e=>setReceiptNotice(e instanceof Error?e.message:'No se pudo abrir.'))}>Ver comprobante</button>
-          <button type="button" disabled={!!receiptBusy} className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" onClick={()=>void sendAgain(invoice)}>{receiptBusy===invoice.id?'Enviando…':'Enviar PDF por correo'}</button>
         </div>
       </div>)}</div>
     </section>}
