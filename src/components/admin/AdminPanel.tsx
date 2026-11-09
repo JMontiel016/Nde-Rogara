@@ -338,11 +338,11 @@ export const AdminPanel: React.FC = () => {
     [row.name, row.email, row.phone, row.planName, ...row.properties.map((property) => property.title)].some((text) => text.toLowerCase().includes(searchTerm)),
   );
 
-  // Publicaciones con menos fotografías al principio para facilitar una revisión ágil.
-  // No se promete un tiempo fijo: la aprobación requiere inspección humana.
+  // Priorizar los anuncios más antiguos en revisión para no dejarlos esperando.
+  // La aprobación sigue necesitando comprobar el contenido de fotos y videos.
   const flaggedProperties = properties
     .filter((property) => property.moderationStatus === 'flagged')
-    .sort((a, b) => (a.images?.length || 0) - (b.images?.length || 0));
+    .sort((a, b) => Date.parse(a.createdAt||'') - Date.parse(b.createdAt||''));
   const pendingReviews = blockedReviews;
   const publishedProperties = properties.filter(
     (property) => property.moderationStatus !== 'removed' && property.isActive !== false,
@@ -372,7 +372,7 @@ export const AdminPanel: React.FC = () => {
 
   const ask = (data: { property?: Property; user?: UserProfile; action: string }) => {
     setConfirmation(data);
-    setReason('');
+    setReason(data.action === 'approve' ? 'Fotografías, videos y descripción revisados. Publicación autorizada.' : '');
     setConfirmEmail('');
     setActionError('');
   };
@@ -386,7 +386,33 @@ export const AdminPanel: React.FC = () => {
     try {
       if (confirmation.property) {
         if (confirmation.action === 'delete-property') deleteProperty(confirmation.property.id);
-        else moderateProperty(confirmation.property.id, confirmation.action === 'approve' ? 'approved' : 'removed', reason.trim());
+        else {
+          const action=confirmation.action === 'approve' ? 'approved' : 'removed';
+          moderateProperty(confirmation.property.id, action, reason.trim());
+          // El cliente es notificado dentro del navegador y, si SMTP funciona,
+          // también por correo. El error SMTP no revierte la revisión ya realizada.
+          const property=confirmation.property;
+          if (property.ownerEmail && /@/.test(property.ownerEmail)) {
+            try {
+              const token=await firebaseAuth.getFreshIdToken();
+              if (!token) throw new Error('La sesión Firebase caducó.');
+              const subject=action==='approved'
+                ? 'Nde Rogarã | Tu anuncio fue aprobado'
+                : 'Nde Rogarã | Aviso sobre tu publicación';
+              const body=action==='approved'
+                ? `Hola, ${property.ownerName||'propietario'}:\n\nTu aviso «${property.title}» fue aprobado en Nde Rogarã.\nMotivo: ${reason.trim()}\n\nEntrá a tu cuenta para consultar su estado.\n\nEquipo Nde Rogarã`
+                : moderationNotice(property.title,reason.trim());
+              const response=await fetch('/api/admin/mail/send',{method:'POST',
+                headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+                body:JSON.stringify({to:property.ownerEmail,subject,body})});
+              const data:{sent?:boolean;error?:string}=await response.json().catch(()=>({}));
+              if (!response.ok||!data.sent) throw new Error(data.error||'SMTP no confirmó el envío.');
+            }catch(err) {
+              setActionError('La decisión se guardó en este navegador, pero el correo no se envió: '+
+                (err instanceof Error?err.message:'Error del servidor.'));
+            }
+          }
+        }
       }
       if (confirmation.user) {
         const user = confirmation.user;
@@ -792,7 +818,7 @@ export const AdminPanel: React.FC = () => {
               <section className="space-y-5">
                 <div>
                   <h2 className="text-xl font-black text-slate-900">Moderación de publicaciones</h2>
-                  <p className="mt-1 text-sm text-slate-500">Toda alta o edición requiere aprobación. Revisá textos, fotos y videos antes de verificar. Retirar por infracción confirmada suspende la cuenta; una reincidencia la bloquea localmente.</p>
+                  <p className="mt-1 text-sm text-slate-500">Se priorizan los avisos que llevan más tiempo esperando. Revisá las fotografías y videos antes de aprobar. La decisión notifica al propietario y solicita un correo automático desde el servidor SMTP.</p>
                 </div>
                 <div className={`${shell} divide-y`}>
                   {flaggedProperties.length === 0 ? (
@@ -806,7 +832,7 @@ export const AdminPanel: React.FC = () => {
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                               <div>
                                 <h3 className="text-lg font-black text-slate-900">{property.title}</h3>
-                                <p className="mt-1 text-sm text-slate-500">{property.ownerName} · {property.ownerEmail} · {property.images?.length || 0} fotos · {property.videos?.length || 0} videos</p>
+                                <p className="mt-1 text-sm text-slate-500">{property.ownerName} · {property.ownerEmail} · {property.images?.length || 0} fotos · {property.videos?.length || 0} videos · En espera desde {dateTime(property.createdAt)}</p>
                                 <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                   {property.moderationReason || 'El anuncio necesita revisión por política interna.'}
                                 </p>
@@ -816,7 +842,7 @@ export const AdminPanel: React.FC = () => {
                                   Ver anuncio
                                 </button>
                                 <button className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => ask({ property, action: 'approve' })}>
-                                  Aprobar y verificar
+                                  Aprobar ahora
                                 </button>
                                 <button className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => ask({ property, action: 'remove' })}>
                                   Retirar por infracción
