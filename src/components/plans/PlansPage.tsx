@@ -431,7 +431,7 @@ export const PlansPage: React.FC = () => {
                 <div className="grid gap-3">
                   <label className={labelClass}>Nombre completo *<input className={inputClass} value={billing.fullName} onChange={(event) => field('fullName', event.target.value)} autoComplete="name" placeholder="Nombre y apellido" /></label>
                   <label className={labelClass}>Correo para comprobantes *<input className={inputClass} value={billing.email} onChange={(event) => field('email', event.target.value)} type="email" autoComplete="email" placeholder="correo@dominio.com" /></label>
-                  <label className={labelClass}>Celular / WhatsApp *<input className={inputClass} value={billing.phone} onChange={(event) => field('phone', event.target.value)} autoComplete="tel" placeholder="Ej.: 0981123456" inputMode="tel" /></label>
+                  <label className={labelClass}>Celular / WhatsApp *<input required className={inputClass} value={billing.phone} onChange={(event) => field('phone', event.target.value)} autoComplete="tel" placeholder="Ej.: 0981123456" inputMode="tel" /></label>
                 </div>
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div>
@@ -457,8 +457,8 @@ export const PlansPage: React.FC = () => {
                   </label>
                   {(billing.documentType || 'ci') === 'ci' ? (
                     <label className={labelClass}>Número de cédula de identidad (CI) *
-                      <input className={inputClass} value={billing.ci || ''} onChange={(event) => field('ci', event.target.value.replace(/\D/g, '').slice(0,10))}
-                        inputMode="numeric" autoComplete="off" placeholder="Ej.: 1234567"/>
+                      <input className={inputClass} value={billing.ci || ''} onChange={(event) => field('ci', event.target.value.replace(/\D/g, '').slice(0,7))}
+                        inputMode="numeric" maxLength={7} autoComplete="off" placeholder="1 a 7 dígitos"/>
                     </label>
                   ) : (
                     <div className="grid grid-cols-[minmax(0,1fr)_90px] gap-3">
