@@ -145,6 +145,7 @@ export const PublishModal: React.FC = () => {
   const [photoInfo, setPhotoInfo] = useState('');
   const [success, setSuccess] = useState(false);
   const [reviewPending, setReviewPending] = useState(false);
+  const [savedAsEdit, setSavedAsEdit] = useState(false);
   const autoNearbyRef = useRef<string[]>([]);
   const locationSectionRef = useRef<HTMLElement | null>(null);
   const pendingMediaDeletes = useRef<Array<{kind:'image'|'video';url:string}>>([]);
@@ -208,7 +209,7 @@ export const PublishModal: React.FC = () => {
     setHasDiscount(Boolean(previous?.discountPercent));
     setDiscountPercent(previous?.discountPercent || 0);
     setAddressResults([]); setAddressError(''); setNearbyError(''); setDetectedNearby([]);
-    setPhotoAlert(''); setPhotoInfo(''); setSaveError(''); setSuccess(false); setReviewPending(false);
+    setPhotoAlert(''); setPhotoInfo(''); setSaveError(''); setSuccess(false); setReviewPending(false); setSavedAsEdit(false);
     pendingMediaDeletes.current=[];
     autoNearbyRef.current = [];
   }, [isPublishModalOpen, editingProperty?.id]);
@@ -473,6 +474,7 @@ export const PublishModal: React.FC = () => {
           ? removeLocalVideo(file.url) : deletePropertyMedia(file.url))
           .catch(error=>console.warn('No se pudo limpiar un archivo descartado:',error));
       }
+      setSavedAsEdit(Boolean(editingProperty));
       setSuccess(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el aviso. Revisá el almacenamiento disponible.');
@@ -488,13 +490,21 @@ export const PublishModal: React.FC = () => {
     </div>
   );
 
-  return <Modal isOpen={isPublishModalOpen} onClose={close} title={editingProperty ? 'Editar inmueble' : 'Publicar inmueble en Nde Rogarã'} maxWidth="4xl">
+  return <Modal isOpen={isPublishModalOpen} onClose={close} title={editingProperty ? `Editar publicación: ${editingProperty.title}` : 'Publicar inmueble en Nde Rogarã'} maxWidth="4xl">
     {success ? <div className="flex flex-col items-center gap-4 py-10 text-center">
       <CheckCircle2 size={48} className="text-emerald-600" />
-      <h2 className="text-xl font-black text-slate-900">{reviewPending ? (editingProperty ? 'Cambios enviados a revisión' : 'Publicación enviada a revisión') : (editingProperty ? 'Cambios publicados' : 'Publicación registrada')}</h2>
+      <h2 className="text-xl font-black text-slate-900">{reviewPending ? (savedAsEdit ? 'Cambios guardados; pendientes de revisión' : 'Publicación enviada a revisión') : (savedAsEdit ? 'Cambios guardados correctamente' : 'Publicación registrada')}</h2>
       <p className="max-w-lg text-sm text-slate-600">{reviewPending ? 'El contenido bloqueado o las imágenes pendientes de verificación no serán visibles hasta su revisión.' : 'El aviso pasó el filtro de texto y está disponible según las condiciones de tu plan.'}</p>
-      <button type="button" className="rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white hover:bg-sky-700" onClick={() => { close(); setSuccess(false); setCurrentView('search'); }}>Ver publicaciones</button>
+      <button type="button" className="rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white hover:bg-sky-700" onClick={() => { close(); setSuccess(false); setCurrentView(savedAsEdit ? 'landlord-rentals' : 'search'); }}>{savedAsEdit ? 'Volver a mis avisos' : 'Ver publicaciones'}</button>
     </div> : <form onSubmit={submit} className="max-h-[78vh] space-y-5 overflow-y-auto pr-1 sm:pr-2">
+      {editingProperty && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status">
+          <p className="text-sm font-black text-emerald-900">Estás editando este aviso, no creando uno nuevo.</p>
+          <p className="mt-1 text-xs text-emerald-800">ID: {editingProperty.id} · Foto(s): {editingProperty.images?.length||0} · Video(s): {editingProperty.videos?.length||0}</p>
+          <p className="mt-1 text-xs text-emerald-800">Se guardarán los cambios sobre la misma publicación. La portada elegida aparecerá al principio de la galería.</p>
+        </div>
+      )}
+
       {saveError && <p role="alert" className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-800"><CircleAlert size={18} />{saveError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4">
         <div><p className="text-sm font-black text-slate-900">{plan?.name || (userRole === 'admin' ? 'Administración' : 'Sin plan vigente')}</p>
