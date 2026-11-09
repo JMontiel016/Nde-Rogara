@@ -34,6 +34,7 @@ import {
 import { adminUserEvents } from '../../services/adminUsers';
 import { getPayments } from '../../services/billing';
 import { fetchFiscalInvoices, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
+import { getReceiptMailLogs, resendReceiptFromAdmin, type ReceiptMailLog } from '../../services/adminReceiptMail';
 import type { Property, UserProfile } from '../../types';
 
 type Tab = 'overview' | 'owners' | 'alerts' | 'reviews' | 'invoices' | 'site' | 'mail';
@@ -135,6 +136,13 @@ export const AdminPanel: React.FC = () => {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
   const [pdfError, setPdfError] = useState('');
+  const [receiptLogs, setReceiptLogs] = useState<ReceiptMailLog[]>([]);
+  const [receiptLogLoading, setReceiptLogLoading] = useState(false);
+  const [receiptLogError, setReceiptLogError] = useState('');
+  const [receiptSending, setReceiptSending] = useState('');
+  const [receiptSelected, setReceiptSelected] = useState('');
+  const [receiptCopies, setReceiptCopies] = useState('');
+  const [receiptActionStatus, setReceiptActionStatus] = useState('');
 
   useEffect(() => {
     const cb = () => setRevision((v) => v + 1);
@@ -169,6 +177,43 @@ export const AdminPanel: React.FC = () => {
       active = false;
     };
   }, [revision]);
+
+  const refreshReceiptLogs = async () => {
+    setReceiptLogLoading(true);
+    setReceiptLogError('');
+    try { setReceiptLogs(await getReceiptMailLogs()); }
+    catch (err) { setReceiptLogError(err instanceof Error ? err.message : 'No se pudo consultar el estado SMTP.'); }
+    finally { setReceiptLogLoading(false); }
+  };
+
+  useEffect(() => {
+    if (tab !== 'invoices' || userRole !== 'admin') return;
+    void refreshReceiptLogs();
+    const interval = window.setInterval(() => { if (!document.hidden) void refreshReceiptLogs(); }, 60000);
+    return () => window.clearInterval(interval);
+  }, [tab, userRole]);
+
+  const lastReceiptLog = (invoice: FiscalInvoice): ReceiptMailLog | null => {
+    const matches = receiptLogs.filter(log => log.paymentId === invoice.paymentId);
+    // Aceptado SMTP tiene prioridad; un error posterior no implica pérdida del envío original.
+    return matches.find(log => log.status === 'accepted') || matches[0] || null;
+  };
+  const resendInvoice = async (invoice: FiscalInvoice) => {
+    if (receiptSending) return;
+    setReceiptSending(invoice.id);
+    setReceiptActionStatus('');
+    try {
+      const copies = receiptCopies.split(/[;,\n]+/).map(value => value.trim()).filter(Boolean);
+      await resendReceiptFromAdmin(invoice, copies);
+      setReceiptActionStatus(`SMTP aceptó el reenvío de ${invoice.documentNumber} a ${invoice.customerEmail}.`);
+      setReceiptSelected('');
+      setReceiptCopies('');
+      await refreshReceiptLogs();
+    } catch (err) {
+      setReceiptActionStatus(err instanceof Error ? err.message : 'No se pudo reenviar el comprobante.');
+      await refreshReceiptLogs();
+    } finally { setReceiptSending(''); }
+  };
 
   const ownerRows = useMemo<OwnerRow[]>(() => {
     const rows = new Map<string, OwnerRow>();
@@ -762,7 +807,7 @@ export const AdminPanel: React.FC = () => {
               <section className="space-y-5">
                 <div>
                   <h2 className="text-xl font-black text-slate-900">Facturas</h2>
-                  <p className="mt-1 text-sm text-slate-500">Comprobantes generados tras las contrataciones de planes realizadas en esta demostración.</p>
+                  <p className="mt-1 text-sm text-slate-500">Comprobantes de contratación y estado de envío SMTP. Al contratar se solicita automáticamente el envío del PDF; desde aquí podés revisar y reintentar únicamente si hay fallos o falta confirmación.</p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
@@ -771,16 +816,32 @@ export const AdminPanel: React.FC = () => {
                   <StatCard icon={X} title="Rechazadas" value={rejectedInvoices.length} hint="Con observación registrada" />
                 </div>
 
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+                  El estado <strong>Registrada</strong> corresponde al comprobante local, no a su envío. «Aceptado por SMTP» confirma recepción por el proveedor de correo, no entrega en la bandeja del destinatario.
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="font-bold text-emerald-700">Aceptados: {invoices.filter(inv=>lastReceiptLog(inv)?.status==='accepted').length}</span>
+                    <span className="font-bold text-rose-700">Fallidos: {invoices.filter(inv=>lastReceiptLog(inv)?.status==='failed').length}</span>
+                    <span className="font-bold text-amber-800">Sin confirmación: {invoices.filter(inv=>!lastReceiptLog(inv)).length}</span>
+                  </div>
+                  <button type="button" onClick={()=>void refreshReceiptLogs()} disabled={receiptLogLoading}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">
+                    {receiptLogLoading?'Consultando…':'Actualizar estado de correos'}
+                  </button>
+                </div>
+                {receiptLogError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">No fue posible comprobar los envíos: {receiptLogError}. No se puede confirmar ningún envío hasta recuperar el historial del servidor.</p>}
+                {receiptActionStatus && <p role="status" className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900">{receiptActionStatus}</p>}
                 {invoiceLoading && <div className={`${shell} p-5 text-sm`}>Cargando facturas…</div>}
                 {invoiceError && <div className={`${shell} p-5 text-sm text-rose-700`}>{invoiceError}</div>}
                 {pdfError && <p className="text-xs text-rose-700">{pdfError}</p>}
 
                 {!invoiceLoading && !invoiceError && (
                   <div className={`${shell} overflow-x-auto`}>
-                    <table className="min-w-[760px] w-full text-sm">
+                    <table className="min-w-[1080px] w-full text-sm">
                       <thead className="bg-slate-50 text-xs text-slate-500">
                         <tr>
-                          {['Emisión', 'Número', 'Cliente', 'Monto', 'Estado', 'Documento'].map((heading) => (
+                          {['Emisión', 'Número', 'Cliente', 'Monto', 'Comprobante', 'Envío por correo', 'Documento'].map((heading) => (
                             <th key={heading} className="px-4 py-4 text-left font-bold">{heading}</th>
                           ))}
                         </tr>
@@ -800,6 +861,45 @@ export const AdminPanel: React.FC = () => {
                                 {invoice.status === 'approved' ? 'Registrada' : invoice.status === 'rejected' ? 'Rechazada' : 'Pendiente'}
                               </Pill>
                               {invoice.reason && <p className="mt-2 max-w-[240px] text-xs text-slate-500">{invoice.reason}</p>}
+                            </td>
+                            <td className="px-4 py-4 min-w-[250px]">
+                              {receiptLogError ? (
+                                <Pill color="red">Servicio no disponible</Pill>
+                              ) : !lastReceiptLog(invoice) ? (
+                                <Pill color="amber">{receiptLogLoading ? 'Verificando…' : 'Sin confirmación SMTP'}</Pill>
+                              ) : lastReceiptLog(invoice)?.status === 'accepted' ? (
+                                <Pill color="green">Aceptado por SMTP</Pill>
+                              ) : (
+                                <Pill color="red">Error de envío</Pill>
+                              )}
+                              <p className="mt-2 max-w-[250px] break-all text-[11px] text-slate-600">{invoice.customerEmail}</p>
+                              {lastReceiptLog(invoice)?.status==='failed' && <p className="mt-1 max-w-[260px] text-[11px] text-rose-700">
+                                {lastReceiptLog(invoice)?.errorMessage || lastReceiptLog(invoice)?.errorCode || 'Error de SMTP'}
+                              </p>}
+                              {lastReceiptLog(invoice)?.createdAt && <p className="mt-1 text-[11px] text-slate-500">{dateTime(lastReceiptLog(invoice)?.createdAt)}</p>}
+                              {lastReceiptLog(invoice)?.cc?.length ? <p className="mt-1 text-[11px] text-slate-500">CC: {lastReceiptLog(invoice)?.cc?.join(', ')}</p> : null}
+                              {!receiptLogError && !receiptLogLoading && lastReceiptLog(invoice)?.status !== 'accepted' && (
+                                <div className="mt-2">
+                                  <button type="button" onClick={()=>{setReceiptSelected(receiptSelected===invoice.id?'':invoice.id);setReceiptCopies('');setReceiptActionStatus('');}}
+                                    className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800">
+                                    {receiptSelected===invoice.id?'Cancelar':'Enviar manualmente'}
+                                  </button>
+                                  {receiptSelected===invoice.id && (
+                                    <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                      <p className="text-[11px] font-bold">Para: {invoice.customerEmail}</p>
+                                      <label className="block text-[11px] font-semibold">Con copia (CC, opcional, máximo 3)
+                                        <textarea rows={2} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                                          placeholder="copia1@correo.com, copia2@correo.com" value={receiptCopies}
+                                          onChange={event=>setReceiptCopies(event.target.value)}/>
+                                      </label>
+                                      <button type="button" disabled={!!receiptSending} onClick={()=>void resendInvoice(invoice)}
+                                        className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                                        {receiptSending===invoice.id?'Enviando…':'Confirmar reenvío PDF'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-4">
                               <button
