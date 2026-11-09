@@ -42,6 +42,10 @@ export async function submitPhotoForModeration(file: File, onProgress?: (percent
   if (!SUPPORTED.includes(file.type)) return { approved: false, reason: 'Solo se admiten fotografías JPG, PNG o WebP.' };
   if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar hasta 50 MB.' };
 
+  // En modo gratuito/local la foto se guarda en el navegador inmediatamente.
+  // Para activar Storage remoto es necesario VITE_MEDIA_STORAGE_MODE=firebase.
+  if (import.meta.env.VITE_MEDIA_STORAGE_MODE !== 'firebase') return prepareLocalPendingPhoto(file);
+
   // Intentar la subida en la nube y, si Storage no está habilitado,
   // permitir una fotografía reducida para mostrarla solo en este navegador.
   // Ninguna ruta implica aprobación automática de contenido visual.
