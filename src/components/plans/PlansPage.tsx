@@ -174,6 +174,7 @@ export const PlansPage: React.FC = () => {
         ...billing,
         fullName: billing.fullName.trim(), email: billing.email.trim().toLowerCase(),
         taxName: billing.taxName.trim(), ci: billing.ci?.trim(), ruc: billing.ruc.trim(), rucDv: billing.rucDv?.trim(),
+        postalCode: chosenMethod === 'card' && cardMode === 'once' ? postalCode : billing.postalCode,
       };
       saveBillingProfile(currentUser.id, buyer);
       const payment = newPaymentRequest({
