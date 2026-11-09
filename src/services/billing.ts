@@ -70,7 +70,7 @@ export function saveBillingProfile(ownerId: string, profile: BillingProfile) {
 export function validateBilling(profile: BillingProfile): string | null {
   if (profile.fullName.trim().length < 4) return 'Ingresá nombre y apellido de la persona responsable del pago.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email.trim())) return 'Ingresá un correo electrónico válido para recibir los comprobantes.';
-  if (!/^\+?[0-9 ()-]{8,}$/.test(profile.phone.trim())) return 'Ingresá un celular válido para el contacto de contratación.';
+  if (profile.phone.trim() && !/^\+?[0-9 ()-]{8,}$/.test(profile.phone.trim())) return 'Ingresá un celular válido o dejá el campo vacío.';
   // Para esta etapa solo se admite identificación por CI o RUC.
   if (profile.invoiceRequested) {
     if (profile.taxName.trim().length < 3) return 'Ingresá el nombre o razón social que figurará en el comprobante.';
