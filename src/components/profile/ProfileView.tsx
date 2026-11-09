@@ -99,6 +99,16 @@ export const ProfileView: React.FC = () => {
     finally { setSecurityBusy(false); }
   };
 
+  const sendResetLink = async () => {
+    if (!currentUser?.email) return;
+    setSecurityBusy(true); setError(''); setNotice('');
+    try {
+      await firebaseAuth.requestPasswordReset(currentUser.email);
+      setNotice('Si tu cuenta utiliza correo y contraseña, recibirás un enlace de recuperación. Revisá también spam.');
+    } catch (cause) { setError(errorMessage(cause)); }
+    finally { setSecurityBusy(false); }
+  };
+
   const removeAccount = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
     if (deleteConfirmation !== 'ELIMINAR') {
@@ -195,7 +205,10 @@ export const ProfileView: React.FC = () => {
             <input required type="password" minLength={8} autoComplete="new-password" className={inputClass} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)} />
           </label>
         </div>
-        <button type="submit" disabled={securityBusy} className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50">Actualizar contraseña</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={securityBusy} className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50">Actualizar contraseña</button>
+          <button type="button" disabled={securityBusy} onClick={() => void sendResetLink()} className="rounded-xl border border-sky-200 px-4 py-2.5 text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-50">Recuperar por correo</button>
+        </div>
       </form>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 p-4">
         <div>
