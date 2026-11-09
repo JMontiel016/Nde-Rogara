@@ -1257,30 +1257,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ownerEmail: currentUser.email,
       createdAt: new Date().toISOString(),
       moderationStatus: 'flagged',
-      moderationReason: 'Pendiente de revisión administrativa',
+      moderationReason: 'Evaluando contenido',
       isVerified: false,
       verifiedAt: undefined,
       isActive: false
     };
     const alertReason = evaluateListing(propWithStatus);
-    if (alertReason) {
-      propWithStatus.moderationStatus = 'flagged';
-      propWithStatus.moderationReason = alertReason;
-      propWithStatus.isActive = false;
-    }
+    // El texto permitido no requiere intervención. Las fotos y videos siguen
+    // pendientes porque no se puede certificar su seguridad solo con palabras.
+    const mediaPending = (propWithStatus.images?.length || 0) > 0 || (propWithStatus.videos?.length || 0) > 0;
+    const flagged = Boolean(alertReason || mediaPending);
+    propWithStatus.moderationStatus = flagged ? 'flagged' : 'approved';
+    propWithStatus.moderationReason = alertReason || (mediaPending ? 'Fotografías o videos pendientes de verificación' : undefined);
+    propWithStatus.isActive = !flagged;
     // Guardar primero: si el navegador agotó su cuota, el formulario mostrará
     // el problema sin cerrar ni dar por publicada una operación incompleta.
     const updated = [propWithStatus, ...properties];
     persistPropertyList(updated);
     setProperties(updated);
-    recordModeration(propWithStatus, 'flagged',
+    if (flagged) recordModeration(propWithStatus, 'flagged',
       alertReason || 'Pendiente de revisión administrativa',
       alertReason ? 'Filtro automático (revisión pendiente)' : 'Control previo a publicación');
     addNotification({
-      title: 'Publicación enviada a revisión',
-      message: `El aviso «${propWithStatus.title}» quedó pendiente de revisión. ${alertReason ? `Motivo adicional: ${alertReason}.` : ''} No será visible hasta su aprobación.`,
+      title: flagged ? 'Aviso pendiente de revisión' : 'Aviso publicado',
+      message: flagged ? `El aviso «${propWithStatus.title}» quedó pendiente de revisión: ${propWithStatus.moderationReason}.` : `El aviso «${propWithStatus.title}» pasó el filtro de texto y se publicó.`,
       category: 'Propiedades',
-      type: 'alert'
+      type: flagged ? 'alert' : 'success'
     });
   };
 
@@ -1298,27 +1300,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ownerEmail: previous.ownerEmail,
       createdAt: previous.createdAt,
       // Cada edición requiere nueva revisión para conservar un distintivo confiable.
-      moderationStatus: 'flagged', moderationReason: 'Cambios pendientes de revisión administrativa',
+      moderationStatus: 'flagged', moderationReason: 'Evaluando edición',
       isVerified: false, verifiedAt: undefined, isActive: false,
     };
-    if (!admin) {
-      const nextFlag = evaluateListing(guarded);
-      if (nextFlag && guarded.moderationStatus !== 'removed') {
-        guarded.moderationStatus = 'flagged'; guarded.moderationReason = nextFlag; guarded.isActive = false;
-        recordModeration(guarded, 'flagged', nextFlag, 'Filtro automático (edición)');
-      }
-      guarded.isActive = false;
-      recordModeration(guarded, 'flagged', guarded.moderationReason || 'Edición pendiente de revisión', 'Control previo a publicación');
-    }
+    const nextFlag = evaluateListing(guarded);
+    const mediaPending = (guarded.images?.length || 0)>0 || (guarded.videos?.length || 0)>0;
+    const flagged = Boolean(nextFlag || mediaPending);
+    guarded.moderationStatus = flagged ? 'flagged' : 'approved';
+    guarded.moderationReason = nextFlag || (mediaPending ? 'Fotografías o videos pendientes de verificación' : undefined);
+    guarded.isActive = !flagged;
+    if (flagged && !admin) recordModeration(guarded,'flagged',guarded.moderationReason||'Requiere revisión',
+      nextFlag ? 'Filtro automático de texto' : 'Revisión visual necesaria');
+
     const list = properties.map(p => p.id === updated.id ? guarded : p);
     persistPropertyList(list);
     setProperties(list);
     setEditingProperty(null);
     addNotification({
-      title: '✏️ Inmueble Actualizado',
-      message: `Los cambios para "${updated.title}" se guardaron exitosamente.`,
+      title: flagged ? 'Edición pendiente' : 'Inmueble actualizado',
+      message: flagged ? `«${updated.title}» requiere revisión: ${guarded.moderationReason}.` : `«${updated.title}» pasó el filtro de texto.`,
       category: 'Propiedades',
-      type: 'success'
+      type: flagged ? 'alert' : 'success'
     });
   };
 
