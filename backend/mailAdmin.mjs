@@ -24,11 +24,29 @@ export function buildMailRouter(admin, authenticated, cors) {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(data),decipher.final()]).toString('utf8');
   };
-  const publicConfig = config => ({provider:config.provider||'custom',host:config.host||'',port:config.port||587,secure:!!config.secure,user:config.user||'',from:config.from||'',senderName:config.senderName||'Nde Rogarã',replyTo:config.replyTo||'',enabled:!!config.enabled,hasPassword:!!config.passwordEncrypted});
-  const getConfig = async () => (await configRef.get()).data() || {};
+  // Priorizar ajustes privados del panel; usar variables seguras del servidor solo como respaldo.
+  // La contraseña de aplicaciones nunca se devuelve al navegador ni se guarda en el repositorio.
+  const fallbackConfig = () => ({
+    provider:'gmail',host:process.env.SMTP_HOST||'smtp.gmail.com',
+    port:Number(process.env.SMTP_PORT||465),secure:Number(process.env.SMTP_PORT||465)===465,
+    user:process.env.SMTP_USER||'016.jmma@gmail.com',
+    from:process.env.SMTP_USER||'016.jmma@gmail.com',
+    senderName:'Nde Rogarã',replyTo:process.env.SMTP_USER||'016.jmma@gmail.com',
+    enabled:!!process.env.SMTP_PASS,hasPassword:!!process.env.SMTP_PASS
+  });
+  const getConfig = async () => {
+    const stored=(await configRef.get()).data()||{};
+    const fallback=fallbackConfig();
+    return {...fallback,...stored,
+      // Sólo el secreto cifrado guardado en Firestore o el secreto privado del entorno autorizan SMTP.
+      hasPassword:!!stored.passwordEncrypted||!!process.env.SMTP_PASS
+    };
+  };
+  const publicConfig = config => ({provider:config.provider||'gmail',host:config.host||'smtp.gmail.com',port:config.port||465,secure:!!config.secure,user:config.user||'',from:config.from||'',senderName:config.senderName||'Nde Rogarã',replyTo:config.replyTo||'',enabled:!!config.enabled,hasPassword:!!config.passwordEncrypted||!!process.env.SMTP_PASS});
   const transportFor = config => {
-    if (!config.enabled || !config.host || !config.user || !config.passwordEncrypted || !secretKey) throw Object.assign(new Error('Configuración SMTP incompleta o inactiva.'),{code:'SMTP_CONFIG'});
-    return nodemailer.createTransport({host:config.host,port:Number(config.port),secure:!!config.secure,requireTLS:!config.secure,auth:{user:config.user,pass:decrypt(config.passwordEncrypted)},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
+    const password=config.passwordEncrypted&&secretKey?decrypt(config.passwordEncrypted):process.env.SMTP_PASS;
+    if(!config.enabled||!config.host||!config.user||!password)throw Object.assign(new Error('Configuración SMTP incompleta o inactiva.'),{code:'SMTP_CONFIG'});
+    return nodemailer.createTransport({host:config.host,port:Number(config.port),secure:!!config.secure,requireTLS:!config.secure,auth:{user:config.user,pass:password},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
   };
   const record = async (type,to,status,errorCode='') => {
     await logsRef.add({type,to,status,errorCode,createdAt:admin.firestore.FieldValue.serverTimestamp()});
@@ -44,7 +62,7 @@ export function buildMailRouter(admin, authenticated, cors) {
     if(!['gmail','outlook','custom'].includes(x.provider)||typeof x.host!=='string'||!/^[-a-z0-9.]{3,253}$/i.test(x.host)||!Number.isInteger(port)||port<1||port>65535||!emailOK(x.user)||!emailOK(x.from)|| (x.replyTo && !emailOK(x.replyTo))||typeof x.senderName!=='string'||x.senderName.length>100||typeof x.enabled!=='boolean'||typeof x.secure!=='boolean'||(x.password && (typeof x.password!=='string'||x.password.length>256)))return res.status(400).json({error:'Revisá los campos SMTP.'});
     try {
       const existing=await getConfig();
-      if(!x.password && !existing.passwordEncrypted)return res.status(400).json({error:'Ingresá una contraseña de aplicaciones.'});
+      if(!x.password && !existing.passwordEncrypted && !process.env.SMTP_PASS)return res.status(400).json({error:'Ingresá una contraseña de aplicaciones o definí SMTP_PASS en el backend.'});
       const update={provider:x.provider,host:x.host.trim(),port,secure:x.secure,user:x.user.trim(),from:x.from.trim(),senderName:x.senderName.trim()||'Nde Rogarã',replyTo:(x.replyTo||'').trim(),enabled:x.enabled,passwordEncrypted:x.password?encrypt(x.password):existing.passwordEncrypted,updatedAt:admin.firestore.FieldValue.serverTimestamp(),updatedBy:req.user.uid};
       await configRef.set(update);
       res.json(publicConfig(update));
