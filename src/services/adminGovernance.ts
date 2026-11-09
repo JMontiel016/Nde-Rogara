@@ -46,8 +46,10 @@ const PROHIBITED = [
 const OFF_TOPIC = /\b(?:vendo|venta de|compro|ofrezco)\s+(?:celulares?|motos?|veh[ií]culos?|autos?|electrodom[eé]sticos?|cursos?|seguros?|criptomonedas?)\b/i;
 export function evaluateListing(property: Property): string | null {
   const content = [property.title, property.description].join(' ').normalize('NFKC');
-  if (PROHIBITED.some(regex => regex.test(content))) return 'Posible contenido prohibido o no relacionado con alquileres de inmuebles';
-  if (OFF_TOPIC.test(content)) return 'Posible publicidad de productos o servicios ajenos al alquiler inmobiliario';
+  if (PROHIBITED.some(regex => regex.test(content))) return 'Contenido prohibido o ajeno a los anuncios inmobiliarios';
+  if (/\b(?:puta|puto|mierda|pelotudo|pelotuda|boludo|boluda|idiota|imb[eé]cil|est[uú]pido|pendejo|hijo de puta|amenaza|te voy a matar)\b/i.test(content)) return 'Insultos o amenazas en el texto del anuncio';
+  if (OFF_TOPIC.test(content)) return 'Publicidad de productos o servicios ajenos al alquiler inmobiliario';
+  if (/\b(?:casino|apuestas|promoci[oó]n pagada|publicidad no solicitada|gana dinero f[aá]cil)\b/i.test(content)) return 'Publicidad o contenido comercial no permitido';
   if (/https?:\/\//i.test(content) && /(?:wa\.me|bit\.ly|t\.me)/i.test(content)) return 'Enlaces promocionales externos: verificar la finalidad del aviso';
   return null;
 }
