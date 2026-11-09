@@ -92,6 +92,8 @@ export interface Property {
   contactHours?: string;
   moderationStatus?: 'approved' | 'flagged' | 'removed';
   moderationReason?: string;
+  /** Fecha de envío a revisión; a los 60s se destaca para intervención manual, nunca se autoaprueba multimedia. */
+  moderationRequestedAt?: string;
   moderatedAt?: string;
   createdAt?: string;
   isActive?: boolean; // true por defecto; si es false, está inactivo/pausado y oculto del catálogo público
