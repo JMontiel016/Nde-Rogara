@@ -19,3 +19,10 @@
 - La aceptación SMTP no garantiza entrega final en bandeja de entrada.
 - Los pagos/facturas de demostración no se transforman en cobros ni en KuDE reales.
 - En producción se necesita proxy o dirección API HTTPS propia; el proxy de Vite es solo de desarrollo.
+
+## Ajuste adicional: acceso administrativo
+- Se retira de la pantalla pública el texto sobre el panel administrativo, la advertencia de contraseñas locales y el botón de alta de administrador por primera vez.
+- Los errores de credenciales de las cuentas demo se muestran de forma genérica, sin revelar configuración interna.
+- Se mantiene la autenticación de desarrollo local con credenciales privadas de `.env.local`. No se crean claves fijas ni se habilita acceso admin desde otras IP o producción.
+- Para recuperar el acceso de pruebas: ejecutar `bash configurar-demo-local.sh` en la raíz del proyecto, reiniciar `npm run dev`, abrir `http://localhost:5173` en la misma PC e iniciar sesión con la clave elegida. Esto no otorga permisos SMTP a Firebase.
+- No se efectuaron pruebas reales de acceso en el equipo local del usuario.
