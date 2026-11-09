@@ -4,8 +4,8 @@
  * Se permiten hasta 3 copias opcionales (CC). Los datos no representan una factura SIFEN.
  */
 import { createHash } from 'node:crypto';
-import { getAdmin, defaults, transport } from '../_mail.js';
-import { allowedPlans, makePdf } from '../_receipt.js';
+import { getAdmin, defaults, transport } from '../../_mail.js';
+import { allowedPlans, makePdf } from '../../_receipt.js';
 
 const emailOK = value => typeof value === 'string' && value.length <= 180 &&
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
