@@ -1244,7 +1244,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const admin = userRole === 'admin' && isLocalAdmin();
     if (property.moderationStatus === 'removed' && !admin) return;
     if (!admin && (!currentUser || (property.ownerId ? property.ownerId !== currentUser.id : property.ownerEmail?.toLowerCase() !== currentUser.email.toLowerCase()))) return;
-    setEditingProperty(property);
+    // Editar siempre el registro actual; no el objeto antiguo de una tarjeta.
+    const latest = properties.find(item => item.id === property.id);
+    if (!latest) return;
+    setEditingProperty({...latest, images:[...(latest.images||[])], videos:[...(latest.videos||[])]});
     setIsPublishModalOpen(true);
   };
 
@@ -1258,6 +1261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
       moderationStatus: 'flagged',
       moderationReason: 'Evaluando contenido',
+      moderationRequestedAt: new Date().toISOString(),
       isVerified: false,
       verifiedAt: undefined,
       isActive: false
@@ -1268,6 +1272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const mediaPending = (propWithStatus.images?.length || 0) > 0 || (propWithStatus.videos?.length || 0) > 0;
     const flagged = Boolean(alertReason || mediaPending);
     propWithStatus.moderationStatus = flagged ? 'flagged' : 'approved';
+    propWithStatus.moderationRequestedAt = flagged ? new Date().toISOString() : undefined;
     propWithStatus.moderationReason = alertReason || (mediaPending ? 'Fotografías o videos pendientes de verificación' : undefined);
     propWithStatus.isActive = !flagged;
     // Guardar primero: si el navegador agotó su cuota, el formulario mostrará
@@ -1312,6 +1317,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const pendingReview = previous.moderationStatus === 'flagged';
     const flagged=Boolean(nextFlag || mediaAdded || pendingReview);
     guarded.moderationStatus=flagged?'flagged':'approved';
+    guarded.moderationRequestedAt=flagged
+      ? (nextFlag || mediaAdded ? new Date().toISOString() : previous.moderationRequestedAt || previous.createdAt)
+      : undefined;
     guarded.moderationReason=nextFlag ||
       (mediaAdded?'Fotografías o videos nuevos pendientes de verificación':
         pendingReview?previous.moderationReason:undefined);
@@ -1344,7 +1352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const approvedAt = new Date().toISOString();
     const next: Property = {
       ...target, moderationStatus: action, moderationReason: reason.trim(),
-      moderatedAt: approvedAt, isActive: action === 'approved',
+      moderatedAt: approvedAt, moderationRequestedAt: undefined, isActive: action === 'approved',
       isVerified: action === 'approved', verifiedAt: action === 'approved' ? approvedAt : undefined,
     };
     setProperties(prev => prev.map(p => p.id === id ? next : p));
