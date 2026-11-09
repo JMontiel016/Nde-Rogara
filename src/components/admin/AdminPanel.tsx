@@ -40,6 +40,11 @@ import { firebaseAuth } from '../../services/firebaseAuth';
 
 type Tab = 'overview' | 'owners' | 'alerts' | 'reviews' | 'invoices' | 'site' | 'mail';
 
+type FirebaseDirectoryUser = {
+  uid:string;name:string;email:string;emailVerified:boolean;disabled:boolean;
+  provider:string;role:'admin'|'landlord';createdAt:string|null;lastSignInAt:string|null;
+};
+
 type OwnerRow = {
   key: string;
   user: UserProfile | null;
@@ -147,6 +152,9 @@ export const AdminPanel: React.FC = () => {
   const [receiptSelected, setReceiptSelected] = useState('');
   const [receiptCopies, setReceiptCopies] = useState('');
   const [receiptActionStatus, setReceiptActionStatus] = useState('');
+  const [firebaseUsers, setFirebaseUsers] = useState<FirebaseDirectoryUser[]>([]);
+  const [firebaseUsersError, setFirebaseUsersError] = useState('');
+  const [firebaseUsersLoading, setFirebaseUsersLoading] = useState(false);
 
   useEffect(() => {
     const cb = () => setRevision((v) => v + 1);
@@ -181,6 +189,22 @@ export const AdminPanel: React.FC = () => {
       active = false;
     };
   }, [revision]);
+
+  const loadFirebaseUsers = async () => {
+    setFirebaseUsersLoading(true);
+    setFirebaseUsersError('');
+    try {
+      const token=await firebaseAuth.getFreshIdToken();
+      if(!token) throw new Error('Iniciá sesión como administrador.');
+      const response=await fetch('/api/admin/users',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+      const data:{users?:FirebaseDirectoryUser[];error?:string;partial?:boolean}=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'No se pudo consultar Firebase Authentication.');
+      setFirebaseUsers(data.users||[]);
+      if(data.partial)setFirebaseUsersError('Se muestran las primeras 2000 cuentas. Hay más resultados en Firebase.');
+    }catch(err){setFirebaseUsersError(err instanceof Error?err.message:'Error del directorio Firebase.');}
+    finally{setFirebaseUsersLoading(false);}
+  };
+  useEffect(()=>{if(tab==='owners'&&userRole==='admin')void loadFirebaseUsers();},[tab,userRole]);
 
   const refreshReceiptLogs = async () => {
     setReceiptLogLoading(true);
@@ -388,6 +412,40 @@ export const AdminPanel: React.FC = () => {
 
   const ownerDirectory = (
     <section className="space-y-5">
+      <div className={`${shell} p-5 space-y-4`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Usuarios registrados en Firebase</h2>
+            <p className="mt-1 text-xs text-slate-500">Todas las cuentas creadas, incluso si nunca publicaron. Último acceso reportado por Firebase Authentication.</p>
+          </div>
+          <button type="button" disabled={firebaseUsersLoading} onClick={()=>void loadFirebaseUsers()}
+            className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-800 disabled:opacity-50">
+            {firebaseUsersLoading?'Consultando…':'Actualizar usuarios'}
+          </button>
+        </div>
+        {firebaseUsersError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs text-rose-800">{firebaseUsersError}</p>}
+        <p className="text-xs font-bold text-slate-700">{firebaseUsers.length} cuentas verificadas en el directorio</p>
+        {firebaseUsers.length===0 && !firebaseUsersLoading && !firebaseUsersError &&
+          <p className="text-sm text-slate-500">Todavía no hay cuentas visibles. Utilizá Actualizar usuarios.</p>}
+        <div className="max-h-80 overflow-auto rounded-xl border border-slate-200">
+          <table className="min-w-[650px] w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600"><tr>
+              <th className="p-3">Cuenta</th><th className="p-3">Rol</th>
+              <th className="p-3">Alta</th><th className="p-3">Último acceso</th><th className="p-3">Estado</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">{firebaseUsers.filter(item=>
+              !search.trim() || (item.name+' '+item.email).toLowerCase().includes(search.toLowerCase())
+            ).map(item=><tr key={item.uid}>
+              <td className="p-3"><strong>{item.name}</strong><p className="text-slate-500">{item.email}</p></td>
+              <td className="p-3">{item.role==='admin'?'Administrador':'Cuenta registrada'}</td>
+              <td className="p-3">{date(item.createdAt)}</td>
+              <td className="p-3">{dateTime(item.lastSignInAt)}</td>
+              <td className="p-3"><Pill color={item.disabled?'red':'green'}>{item.disabled?'Deshabilitado':'Habilitado'}</Pill></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-slate-500">Las acciones de suspender/eliminar del panel inferior pertenecen al módulo local de demostración y no cambian por sí solas Firebase Authentication.</p>
+      </div>
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-xl font-black text-slate-900">Propietarios, planes y publicaciones</h2>
