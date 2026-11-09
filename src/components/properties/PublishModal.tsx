@@ -350,8 +350,10 @@ export const PublishModal: React.FC = () => {
       requiresActivePlan: editingProperty?.requiresActivePlan ?? (userRole !== 'admin'),
       createdAt: editingProperty?.createdAt || new Date().toISOString(),
     };
-    // Texto observado o no, toda publicación o edición pasa a revisión.
-    setReviewPending(true);
+    // Una opinión limpia de texto se aprueba sola; si hay imágenes/videos aún
+    // se requiere revisión visual, pues el filtro textual no revisa fotos.
+    const reason=evaluateListing(data);
+    setReviewPending(Boolean(reason || images.length || videos.length));
     try {
       if (editingProperty) updateProperty(data); else addProperty(data);
       setSuccess(true);
@@ -372,8 +374,8 @@ export const PublishModal: React.FC = () => {
   return <Modal isOpen={isPublishModalOpen} onClose={close} title={editingProperty ? 'Editar inmueble' : 'Publicar inmueble en Nde Rogarã'} maxWidth="4xl">
     {success ? <div className="flex flex-col items-center gap-4 py-10 text-center">
       <CheckCircle2 size={48} className="text-emerald-600" />
-      <h2 className="text-xl font-black text-slate-900">{editingProperty ? 'Cambios enviados a revisión' : 'Publicación enviada a revisión'}</h2>
-      <p className="max-w-lg text-sm text-slate-600">El aviso no aparecerá públicamente hasta que la administración complete su revisión.</p>
+      <h2 className="text-xl font-black text-slate-900">{reviewPending ? (editingProperty ? 'Cambios enviados a revisión' : 'Publicación enviada a revisión') : (editingProperty ? 'Cambios publicados' : 'Publicación registrada')}</h2>
+      <p className="max-w-lg text-sm text-slate-600">{reviewPending ? 'El contenido bloqueado o las imágenes pendientes de verificación no serán visibles hasta su revisión.' : 'El aviso pasó el filtro de texto y está disponible según las condiciones de tu plan.'}</p>
       <button type="button" className="rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white hover:bg-sky-700" onClick={() => { close(); setSuccess(false); setCurrentView('search'); }}>Ver publicaciones</button>
     </div> : <form onSubmit={submit} className="max-h-[78vh] space-y-5 overflow-y-auto pr-1 sm:pr-2">
       {saveError && <p role="alert" className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-800"><CircleAlert size={18} />{saveError}</p>}
