@@ -21,45 +21,97 @@ const money = n => new Intl.NumberFormat('es-PY').format(n);
 const errorJson = (res, code, error, detail) => res.status(code).json({ error, ...(detail ? { code: detail } : {}) });
 const time = () => new Date().toISOString();
 
+/** Diseño A4 inspirado en el ejemplo proporcionado, SIN utilizar datos/CDC/QR fiscales reales. */
 export function makePdf(invoice, plan, docNumber, to) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 44, info: {
-      Title: 'Comprobante de contratación Nde Rogarã',
-      Author: 'Nde Rogarã', Subject: 'Documento de demostración sin validez tributaria',
-    }});
-    const parts = [];
-    doc.on('data', chunk => parts.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(parts)));
-    doc.on('error', reject);
-    const c = '#15334d';
-    doc.font('Helvetica-Bold').fontSize(22).fillColor(c).text('Nde Rogarã');
-    doc.moveDown(0.2).font('Helvetica').fontSize(10).fillColor('#6b7280').text('Plataforma de publicación de inmuebles');
-    doc.moveDown(1).rect(44, doc.y, 507, 38).fill('#fff2d5');
-    doc.fillColor('#8b5510').font('Helvetica-Bold').fontSize(12)
-      .text('COMPROBANTE DE DEMOSTRACIÓN - SIN VALIDEZ FISCAL', 54, doc.y + 11, { width: 486, align: 'center' });
-    doc.y += 48;
-    doc.fontSize(11).fillColor(c).font('Helvetica-Bold').text('Datos de la contratación');
-    doc.moveDown(0.6).font('Helvetica').fillColor('#182f42').fontSize(11);
-    const lines = [
-      ['Nº de comprobante', docNumber],
-      ['Fecha', new Date().toLocaleString('es-PY')],
-      ['Plan contratado (prueba)', plan.name],
-      ['Importe referencial', 'Gs. ' + money(plan.amount)],
-      ['Nombre / razón social', invoice.customerName],
-      ['Documento del receptor', (invoice.customerDocumentType === 'ruc' ? 'RUC' : 'CI') + ': ' + invoice.customerDocument],
-      ['Correo del destinatario', to],
-      ['Método de prueba', invoice.method === 'qr' ? 'Código QR' : 'Tarjeta'],
-      ['Referencia', invoice.paymentId],
-    ];
-    for (const [label, value] of lines) {
-      doc.font('Helvetica-Bold').text(label + ': ', { continued: true }).font('Helvetica').text(String(value));
-      doc.moveDown(0.5);
-    }
-    doc.moveDown(1).font('Helvetica-Bold').fontSize(12).fillColor('#8b5510')
-      .text('DOCUMENTO INFORMATIVO - SIN VALIDEZ TRIBUTARIA');
-    doc.moveDown(0.5).font('Helvetica').fontSize(9).fillColor('#4b5563')
-      .text('Este comprobante registra una contratación de demostración del sistema. No se procesó un cargo bancario real. No es una factura electrónica, KuDE ni acredita aprobación de la DNIT o SIFEN. No posee CDC, XML firmado ni timbrado fiscal autorizado.', { lineGap: 4 });
-    doc.end();
+    const pdf = new PDFDocument({
+      size:'A4', margin:30,
+      info:{Title:'Comprobante de muestra Nde Rogarã '+docNumber,
+        Subject:'Factura electrónica simulada. Sin validez tributaria',Author:'Nde Rogarã'}
+    });
+    const chunks=[];
+    pdf.on('data',c=>chunks.push(c));pdf.on('end',()=>resolve(Buffer.concat(chunks)));
+    pdf.on('error',reject);
+    const width=pdf.page.width, margin=29, right=width-margin, area=right-margin;
+    const ink='#111827', gray='#4b5563', soft='#e5e7eb';
+    const fmt = n => new Intl.NumberFormat('es-PY').format(n);
+    const label=(s,x,y,w,opts={})=>pdf.fillColor(ink).font(opts.bold?'Helvetica-Bold':'Helvetica')
+      .fontSize(opts.size||9).text(String(s??''),x,y,{width:w,ellipsis:true,...opts});
+    const box=(x,y,w,h)=>pdf.lineWidth(0.9).strokeColor(ink).roundedRect(x,y,w,h,6).stroke();
+    const row=(k,v,x,y,w,offset=94)=>{label(k,x,y,offset,{bold:true,size:8.7});label(v,x+offset,y,w-offset,{size:8.7});};
+    const title='FACTURA ELECTRÓNICA · MODELO DE DEMOSTRACIÓN';
+    // Aviso permanente: no debe confundirse con un KuDE autorizado.
+    pdf.save().fillColor('#ffefc6').rect(margin,25,area,28).fill().restore();
+    label('DOCUMENTO FICTICIO · SIN VALIDEZ TRIBUTARIA · NO APROBADO POR SIFEN',margin+8,33,area-16,
+      {bold:true,size:9.5,align:'center'});
+    const y1=61,leftW=area*0.69,gap=6,rightX=margin+leftW+gap,rightW=area-leftW-gap;
+    box(margin,y1,leftW,133);box(rightX,y1,rightW,133);
+    pdf.save().fillColor('#0b5b91').roundedRect(margin+10,y1+12,78,64,6).fill().restore();
+    label('NDE',margin+17,y1+21,64,{bold:true,size:20,align:'center',color:'#fff'});
+    pdf.fillColor('white').font('Helvetica-Bold').fontSize(20).text('ROGARÃ',margin+12,y1+45,{width:73,align:'center'});
+    label('NDE ROGARÃ',margin+97,y1+17,leftW-110,{bold:true,size:16});
+    label('Servicios de publicación de inmuebles',margin+97,y1+40,leftW-110,{size:9});
+    label('Paraguay · Plataforma inmobiliaria',margin+97,y1+59,leftW-110,{size:9});
+    label('Correo: 016.jmma@gmail.com',margin+97,y1+79,leftW-110,{size:8});
+    label('Emisor de muestra: datos fiscales ficticios',margin+10,y1+111,leftW-20,{size:8});
+    label('Timbrado ficticio: 12345678',rightX+8,y1+12,rightW-16,{bold:true,size:8.5});
+    label('RUC ficticio: 87654321-0',rightX+8,y1+31,rightW-16,{bold:true,size:8.5});
+    label('Inicio de vigencia: NO APLICA',rightX+8,y1+50,rightW-16,{size:8});
+    label(title,rightX+8,y1+70,rightW-16,{bold:true,size:9});
+    label(docNumber,rightX+6,y1+99,rightW-12,{bold:true,size:15,align:'center'});
+    const y2=202;box(margin,y2,area,145);
+    const timeValue=invoice.issueDate ? new Date(invoice.issueDate) : new Date();
+    const when=Number.isNaN(timeValue.getTime())?new Date():timeValue;
+    const date=when.toLocaleString('es-PY',{timeZone:'America/Asuncion',dateStyle:'short',timeStyle:'medium'});
+    const leftX=margin+10,left2=margin+area*0.54,right2=right-left2-12;
+    row('Fecha emisión:',date,leftX,y2+11,area*.53,96);
+    row('Nombre:',invoice.customerName,leftX,y2+33,area*.53,65);
+    row(invoice.customerDocumentType==='ruc'?'RUC:':'C.I.:',invoice.customerDocument,leftX,y2+54,area*.53,65);
+    row('Correo:',to,leftX,y2+77,area*.53,65);
+    row('Referencia:',invoice.paymentId,leftX,y2+100,area*.53,65);
+    row('Condición:', 'Contado (muestra)',left2,y2+11,right2,70);
+    row('Forma pago:',invoice.method==='qr'?'QR de prueba':'Tarjeta de prueba',left2,y2+33,right2,70);
+    row('Moneda:', 'Guaraníes (PYG)',left2,y2+54,right2,70);
+    row('Operación:', 'Prestación de servicios',left2,y2+77,right2,70);
+    row('Documento:', 'No asociado',left2,y2+100,right2,70);
+    // Cuadro de detalle con columnas del KuDE de referencia.
+    const y3=355,hHead=31,hItem=62;
+    box(margin,y3,area,hHead+hItem);
+    const cols=[40,183,35,34,50,48,43,44,area-477];
+    const headers=['Cód.','Descripción','Und.','Cant.','P. Unit.','Dto.','Exentas','5%','10%'];
+    let x=margin;
+    cols.forEach((w,i)=>{if(i>0)pdf.moveTo(x,y3).lineTo(x,y3+hHead+hItem).strokeColor(ink).lineWidth(.65).stroke();
+      label(headers[i],x+3,y3+10,w-6,{size:7.2,bold:true,align:i>1?'center':'left'});x+=w;});
+    pdf.moveTo(margin,y3+hHead).lineTo(right,y3+hHead).stroke();
+    x=margin;const rowValues=['01','Suscripción a plan de publicación de inmuebles\n'+plan.name,
+      'UNI','1',fmt(plan.amount),'0','0','0',fmt(plan.amount)];
+    cols.forEach((w,i)=>{label(rowValues[i],x+3,y3+hHead+12,w-6,
+      {size:i===1?7.8:7.3,align:i>1?'right':'left'});x+=w;});
+    const y4=456;
+    box(margin,y4,area,102);
+    pdf.moveTo(margin,y4+32).lineTo(right,y4+32).stroke();
+    pdf.moveTo(margin,y4+65).lineTo(right,y4+65).stroke();
+    label('SUBTOTAL:',margin+10,y4+10,120,{bold:true,size:10});
+    label(fmt(plan.amount),right-110,y4+10,100,{bold:true,size:10,align:'right'});
+    label('TOTAL DE LA OPERACIÓN:',margin+10,y4+43,205,{bold:true,size:10});
+    label('Gs. '+fmt(plan.amount),right-145,y4+43,135,{bold:true,size:11,align:'right'});
+    label('TOTAL EN GUARANÍES:',margin+10,y4+77,146,{bold:true,size:9});
+    label('Gs. '+fmt(plan.amount),right-145,y4+77,135,{bold:true,size:10,align:'right'});
+    const iva=Math.round(plan.amount/11),base=plan.amount-iva;
+    box(margin,568,area,52);
+    label('LIQUIDACIÓN REFERENCIAL DE IVA (10%)',margin+10,580,245,{bold:true,size:9});
+    label('Base: '+fmt(base)+' Gs.    IVA 5%: 0    IVA 10%: '+fmt(iva)+' Gs.',margin+10,600,area-20,{size:8.5});
+    box(margin,629,area,166);
+    label('VERIFICACIÓN FISCAL NO DISPONIBLE',margin+15,645,area-30,{bold:true,size:12,align:'center'});
+    label('No se genera CDC, QR tributario ni enlace de verificación.',margin+15,667,area-30,{size:9,align:'center'});
+    label('ESTE DOCUMENTO ES UN EJEMPLO VISUAL, NO LA REPRESENTACIÓN GRÁFICA DE UN XML FISCAL.',margin+18,704,area-36,
+      {bold:true,size:8,align:'center'});
+    label('No existe timbrado fiscal autorizado para esta operación, ni aprobación de la DNIT/SIFEN.',
+      margin+25,728,area-50,{size:8.5,align:'center'});
+    label('La contratación y el pago son de prueba; no representan un cobro bancario real.',
+      margin+25,749,area-50,{size:8.5,align:'center'});
+    label('Nde Rogarã · Constancia para demostración',margin+20,778,area-40,{size:7.5,align:'center'});
+    pdf.end();
   });
 }
 
