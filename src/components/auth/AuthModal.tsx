@@ -41,12 +41,14 @@ export const AuthModal: React.FC = () => {
   const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const registering = authModalMode === 'register';
 
   useEffect(() => {
     setName(''); setEmail(''); setPhone(''); setPassword('');
     setConfirmPassword(''); setShowPassword(false);
-    setAcceptedPolicy(false); setError('');
+    setAcceptedPolicy(false); setError(''); setResetMode(false); setResetSent(false);
   }, [authModalMode, isAuthModalOpen]);
 
   const authorizeLocalDemo = async (mail: string, secret: string): Promise<boolean> => {
@@ -56,6 +58,24 @@ export const AuthModal: React.FC = () => {
       body: JSON.stringify({ email: mail, password: secret })
     });
     return response.ok;
+  };
+
+  const resetPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setError('');
+    if (!email.trim()) { setError('Ingresá tu correo electrónico.'); return; }
+    setBusy(true);
+    try {
+      await firebaseAuth.requestPasswordReset(email);
+      // Respuesta neutral para no revelar si un usuario existe.
+      setResetSent(true);
+    } catch (err) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/invalid-email') setError('Ingresá una dirección de correo válida.');
+      else if (code === 'auth/too-many-requests') setError('Demasiados intentos. Probá nuevamente más tarde.');
+      else setError('No se pudo enviar el enlace. Intentá nuevamente.');
+    } finally { setBusy(false); }
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -136,9 +156,9 @@ export const AuthModal: React.FC = () => {
       isOpen={isAuthModalOpen}
       onClose={() => setIsAuthModalOpen(false)}
       maxWidth="md"
-      title={registering ? 'Crear cuenta' : 'Iniciar sesión'}
+      title={resetMode ? 'Recuperar contraseña' : registering ? 'Crear cuenta' : 'Iniciar sesión'}
     >
-      <form onSubmit={submit} className="space-y-5" autoComplete="on">
+      <form onSubmit={resetMode ? resetPassword : submit} className="space-y-5" autoComplete="on">
         <div className="flex items-center gap-3 pb-1">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
             <Home size={23} strokeWidth={1.8} aria-hidden="true" />
@@ -146,12 +166,12 @@ export const AuthModal: React.FC = () => {
           <div>
             <h3 className="text-lg font-extrabold tracking-tight text-slate-900">Nde Rogarã</h3>
             <p className="text-sm text-slate-500">
-              {registering ? 'Creá tu perfil para publicar inmuebles.' : 'Bienvenido de nuevo a tu espacio.'}
+              {resetMode ? 'Te enviaremos un enlace para establecer una nueva contraseña.' : registering ? 'Creá tu perfil para publicar inmuebles.' : 'Bienvenido de nuevo a tu espacio.'}
             </p>
           </div>
         </div>
 
-        {registering && (
+        {!resetMode && registering && (
           <>
             <label className={label}>
               <span>Nombre completo</span>
@@ -180,7 +200,7 @@ export const AuthModal: React.FC = () => {
               placeholder="nombre@correo.com" autoComplete="email" maxLength={254} />
           </span>
         </label>
-        <label className={label}>
+        {!resetMode && <label className={label}>
           <span>Contraseña</span>
           <span className="relative block">
             <LockKeyhole aria-hidden="true" size={18} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-400" />
@@ -194,9 +214,11 @@ export const AuthModal: React.FC = () => {
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </span>
-        </label>
+        </label>}
 
-        {registering && (
+        {!resetMode && !registering && <button type="button" className="-mt-2 block w-full text-right text-sm font-bold text-sky-700 hover:underline" onClick={() => { setResetMode(true); setResetSent(false); setError(''); setPassword(''); }}>¿Olvidaste tu contraseña?</button>}
+
+        {!resetMode && registering && (
           <>
             <label className={label}>
               <span>Confirmar contraseña</span>
@@ -222,6 +244,7 @@ export const AuthModal: React.FC = () => {
           </>
         )}
 
+        {resetMode && resetSent && <p role="status" className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-800">Si el correo está registrado con contraseña, recibirás un enlace de recuperación. Revisá también la carpeta de spam.</p>}
         {error && (
           <p role="alert" className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">
             <AlertCircle size={17} className="mt-0.5 shrink-0" />{error}
@@ -229,14 +252,14 @@ export const AuthModal: React.FC = () => {
         )}
         <button type="submit" disabled={busy}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-700 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-sky-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-wait disabled:opacity-60">
-          {busy ? 'Procesando…' : registering ? 'Crear mi cuenta' : 'Ingresar'}
+          {busy ? 'Procesando…' : resetMode ? 'Enviar enlace de recuperación' : registering ? 'Crear mi cuenta' : 'Ingresar'}
           {!busy && <ArrowRight size={17} aria-hidden="true" />}
         </button>
         <div className="border-t border-slate-100 pt-4 text-center text-sm text-slate-500">
-          {registering ? '¿Ya tenés una cuenta?' : '¿Todavía no tenés una cuenta?'}{' '}
+          {resetMode ? '¿Recordaste tu contraseña?' : registering ? '¿Ya tenés una cuenta?' : '¿Todavía no tenés una cuenta?'}{' '}
           <button type="button" className="font-bold text-sky-700 hover:text-sky-900 hover:underline"
-            onClick={() => { setError(''); setAuthModalMode(registering ? 'login' : 'register'); }}>
-            {registering ? 'Iniciá sesión' : 'Registrate'}
+            onClick={() => { setError(''); if (resetMode) { setResetMode(false); setResetSent(false); } else setAuthModalMode(registering ? 'login' : 'register'); }}>
+            {resetMode ? 'Volver a iniciar sesión' : registering ? 'Iniciá sesión' : 'Registrate'}
           </button>
         </div>
       </form>
