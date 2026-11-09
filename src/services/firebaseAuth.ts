@@ -20,6 +20,12 @@ import {
   onAuthStateChanged as fbOnAuthStateChanged,
   updateProfile,
   getIdTokenResult,
+  sendPasswordResetEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  updatePassword,
+  deleteUser,
   Auth,
   User as FirebaseSDKUser
 } from 'firebase/auth';
@@ -218,6 +224,46 @@ export class FirebaseAuthService {
 
   async getFreshIdToken(): Promise<string | null> {
     return this.auth?.currentUser ? this.auth.currentUser.getIdToken() : null;
+  }
+
+  /** Envía un enlace real de recuperación al correo registrado en Firebase. */
+  async requestPasswordReset(email: string): Promise<void> {
+    if (!this.auth) throw new Error('El servicio de cuentas no está disponible.');
+    await sendPasswordResetEmail(this.auth, email.trim().toLowerCase(), {
+      url: window.location.origin,
+      handleCodeInApp: false
+    });
+  }
+
+  /** Cambia la contraseña solo después de reautenticar al titular. */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const user = this.auth?.currentUser;
+    if (!user?.email) throw new Error('Iniciá sesión para actualizar tu contraseña.');
+    if (!user.providerData.some(provider => provider.providerId === 'password')) {
+      throw new Error('Tu cuenta usa Google. Administrá la contraseña desde tu cuenta de Google.');
+    }
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, currentPassword));
+    await updatePassword(user, newPassword);
+  }
+
+  /** Eliminación real de Firebase Authentication, con reautenticación obligatoria. */
+  async permanentlyDeleteAccount(password?: string): Promise<void> {
+    const user = this.auth?.currentUser;
+    if (!user) throw new Error('Iniciá sesión nuevamente para eliminar tu cuenta.');
+    const hasPassword = user.providerData.some(provider => provider.providerId === 'password');
+    const hasGoogle = user.providerData.some(provider => provider.providerId === 'google.com');
+    if (hasPassword) {
+      if (!user.email || !password) throw new Error('Ingresá tu contraseña actual para confirmar.');
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+    } else if (hasGoogle) {
+      await reauthenticateWithPopup(user, new GoogleAuthProvider());
+    } else {
+      throw new Error('No se puede verificar este método de acceso. Contactá a soporte.');
+    }
+    await deleteUser(user);
+    this.currentUser = null;
+    localStorage.removeItem(STORAGE_KEY);
+    notifyListeners(null);
   }
 
   /** Rol comprobado con claims firmados por Firebase, nunca por email/localStorage. */
