@@ -38,14 +38,14 @@ async function prepareLocalPendingPhoto(file: File): Promise<ImageDecision> {
   }
 }
 
-export async function submitPhotoForModeration(file: File): Promise<ImageDecision> {
+export async function submitPhotoForModeration(file: File, onProgress?: (percent:number)=>void): Promise<ImageDecision> {
   if (!SUPPORTED.includes(file.type)) return { approved: false, reason: 'Solo se admiten fotografías JPG, PNG o WebP.' };
   if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar hasta 50 MB.' };
 
   // Firebase Storage guarda las imágenes de todos los usuarios. El archivo
   // permanece pendiente de revisión visual; subir no equivale a aprobar.
   try {
-    const url = await uploadPropertyMedia(file, 'image');
+    const url = await uploadPropertyMedia(file, 'image', onProgress);
     return { approved: true, url, pendingManualReview: true };
   } catch (error) {
     return { approved: false, reason: error instanceof Error ? error.message : 'No se pudo subir la fotografía.' };
