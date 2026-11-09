@@ -289,6 +289,14 @@ export const PublishModal: React.FC = () => {
     setSaveError('');setUploadingVideo(true);setMediaProgress(0);
     for(const file of files){
       try{
+        if (import.meta.env.VITE_MEDIA_STORAGE_MODE !== 'firebase') {
+          const duration=await videoDuration(file);
+          if(duration>MAX_VIDEO_SECONDS)throw new Error('El video no puede superar los 40 segundos.');
+          const local=await storeLocalVideo(file);
+          setVideos(prev=>prev.length<planMaxVideos?[...prev,local]:prev);
+          setPhotoInfo('Video guardado en este navegador. Podés verlo o eliminarlo antes de publicar.');
+          continue;
+        }
         const url=await uploadPropertyMedia(file,'video',setMediaProgress);
         setVideos(prev=>prev.length<planMaxVideos?[...prev,url]:prev);
       }catch(error){
@@ -507,7 +515,7 @@ export const PublishModal: React.FC = () => {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((src, index) => <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200"><a href={src} target="_blank" rel="noopener noreferrer" title="Ver fotografía en tamaño completo"><img src={src} alt={`Foto ${index + 1}`} className="aspect-video w-full object-cover hover:opacity-90" /></a><div className="flex flex-wrap items-center justify-between gap-1 p-2 text-xs"><span>{index === 0 ? 'Portada' : `Foto ${index + 1}`}</span><div className="flex gap-1">{index > 0 && <button type="button" onClick={() => setImages(prev => [prev[index], ...prev.filter((_, i) => i !== index)])} className="rounded border px-1.5 py-1" title="Hacer portada">★</button>}<button type="button" onClick={() => void removeMedia('image',src)} title="Eliminar foto" className="text-rose-700"><Trash2 size={16} /></button></div></div></div>)}</div>
         {videos.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Videos cargados</p>{videos.map((reference, index) => <div key={reference} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span>Recorrido {index + 1}</span><button type="button" onClick={() => void removeMedia('video',reference)} className="flex items-center gap-1 text-rose-700"><Trash2 size={15} />Quitar</button></div>)}</div>}
         {videos.length > 0 && <LocalVideoGallery videos={videos} />}
-        <p className="text-xs text-slate-500">Los videos se almacenan en Firebase y podrán reproducirse desde otros dispositivos después de aprobar la publicación.</p>
+        <p className="text-xs text-slate-500">En el modo gratuito, los videos se guardan en este navegador. Podés verlos o eliminarlos, pero todavía no se comparten entre dispositivos.</p>
       </section>
 
       <section className={sectionClass}>
