@@ -1,4 +1,5 @@
 import { readIssuerDraft, type IssuerDraft, type PaymentRecord } from './billing';
+import { firebaseAuth } from './firebaseAuth';
 
 /** Comprobantes de demostración: no equivalen a facturas fiscales ni a documentos SIFEN. */
 export type InvoiceStatus = 'approved' | 'rejected' | 'pending';
@@ -32,7 +33,16 @@ export function getLocalInvoices(): FiscalInvoice[] {
   } catch { return []; }
 }
 export async function fetchFiscalInvoices(): Promise<FiscalInvoice[]> {
-  return getLocalInvoices();
+  const token = await firebaseAuth.getFreshIdToken();
+  if (!token) return getLocalInvoices();
+  const response = await fetch('/api/admin/invoices', {headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  if (response.status===403) return getLocalInvoices(); // Propietario: solo sus propios registros locales.
+  const data:{invoices?:FiscalInvoice[];error?:string}=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||'No se pudo consultar la numeración global.');
+  const local=getLocalInvoices();
+  const remote=data.invoices||[];
+  const known=new Set(remote.map(inv=>inv.paymentId));
+  return [...remote,...local.filter(inv=>!known.has(inv.paymentId))].sort((a,b)=>b.issueDate.localeCompare(a.issueDate));
 }
 
 /** Almacena el comprobante asignado por Firestore. No inventa un correlativo local. */
