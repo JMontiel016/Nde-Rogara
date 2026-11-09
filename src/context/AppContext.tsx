@@ -1036,7 +1036,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Cerrar sesión en Firebase
+    // Retirar de la lista local los anuncios asociados con la cuenta eliminada.
+    // La eliminación de datos de servicios externos requiere un backend propio.
+    setProperties(prev => prev.filter(property =>
+      property.ownerId ? property.ownerId !== targetId : property.ownerEmail?.toLowerCase() !== targetEmail
+    ));
+
+    // Cerrar cualquier resto de sesión en Firebase.
     firebaseAuth.signOut().catch(() => {});
 
     // Limpiar sesión activa
@@ -1047,8 +1053,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentView('home');
 
     addNotification({
-      title: '🗑️ Perfil Eliminado Definitivamente',
-      message: 'Tu cuenta y todos tus datos personales han sido borrados de Nde Rogarã.',
+      title: 'Cuenta de acceso eliminada',
+      message: 'Se eliminó la cuenta de autenticación y los datos locales asociados en este navegador.',
       category: 'Sistema',
       type: 'alert'
     });
