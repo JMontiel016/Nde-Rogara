@@ -371,8 +371,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isLocalAdmin = () => Boolean(currentUser && currentUser.role === 'admin' && userRole === 'admin' &&
     currentUser.status !== 'inactive' &&
-    (currentUser.id === 'local-dev-admin' && canUseLocalDevAdmin() ||
-    !firebaseAuth.isConfigured() && registeredUsers.some(u => u.id === currentUser.id && u.role === 'admin' && u.status !== 'inactive')));
+    ((currentUser.id === 'local-dev-admin' && canUseLocalDevAdmin()) ||
+    (firebaseAuth.isConfigured()
+      ? firebaseAuth.getCurrentUser()?.uid === currentUser.id && firebaseAuth.getCurrentUser()?.role === 'admin'
+      : registeredUsers.some(u => u.id === currentUser.id && u.role === 'admin' && u.status !== 'inactive'))));
 
 
   const ownerPropertyMatch = (p: Property, owner: UserProfile) =>
@@ -922,7 +924,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Si el usuario ya está registrado en localStorage, estirar sus datos propios (nombre, teléfono, etc.)
     const registered = readStored<UserProfile[]>('alquipy_registered_users', [], isList);
     const existing = registered.find(u => u.email.toLowerCase() === user.email.toLowerCase());
-    const finalUser = existing || user;
+    // En producción nunca recuperar privilegios desde un perfil guardado en el navegador.
+    const finalUser = firebaseAuth.isConfigured() ? user : (existing || user);
     if (finalUser.status === 'inactive') return;
 
     setCurrentUser(finalUser);
