@@ -398,8 +398,9 @@ export const AdminPanel: React.FC = () => {
         if (confirmation.action === 'delete-property') deleteProperty(confirmation.property.id);
         else {
           const action=confirmation.action === 'approve' ? 'approved' : 'removed';
-          moderateProperty(confirmation.property.id, action, reason.trim());
-          setAdminActionNotice('Decisión registrada en este navegador. Verificando notificación SMTP al propietario…');
+          // Primero confirmar la decisión en Firebase; si falla no aparentar aprobación.
+          await moderateProperty(confirmation.property.id, action, reason.trim());
+          setAdminActionNotice('Decisión registrada en Firebase. Verificando notificación SMTP al propietario…');
           // El cliente es notificado dentro del navegador y, si SMTP funciona,
           // también por correo. El error SMTP no revierte la revisión ya realizada.
           const property=confirmation.property;
