@@ -77,8 +77,8 @@ export function validateBilling(profile: BillingProfile): string | null {
     if ((profile.documentType || 'ci') === 'ruc') {
       if (!/^\d{3,9}$/.test(profile.ruc.trim())) return 'Ingresá el número de RUC sin el dígito verificador.';
       if (!/^\d$/.test((profile.rucDv || '').trim())) return 'Ingresá el dígito verificador del RUC (un número).';
-    } else if (!/^\d{3,10}$/.test((profile.ci || '').trim())) {
-      return 'Ingresá un número de cédula de identidad válido.';
+    } else if (!/^\d{1,7}$/.test((profile.ci || '').trim())) {
+      return 'La CI debe tener entre 1 y 7 dígitos numéricos.';
     }
     // La dirección no es obligatoria para este comprobante de muestra.
   }
