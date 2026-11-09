@@ -207,9 +207,17 @@ export const AdminPanel: React.FC = () => {
     setReceiptSending(invoice.id);
     setReceiptActionStatus('');
     try {
-      const copies = receiptCopies.split(/[;,\n]+/).map(value => value.trim()).filter(Boolean);
+      const copies = receiptCopies.split(';').map(value => value.trim()).filter(Boolean);
+      if (copies.length > 3 || copies.some(value => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))) {
+        throw new Error('Ingresá como máximo 3 direcciones válidas separadas por punto y coma (;).');
+      }
+      const destination = [invoice.customerEmail, ...copies].join('; ');
+      if (!window.confirm(`¿Querés reenviar el comprobante ${invoice.documentNumber} a ${destination}?\n\nLa acción enviará nuevamente el PDF aunque el correo ya figure como aceptado.`)) {
+        setReceiptSending('');
+        return;
+      }
       await resendReceiptFromAdmin(invoice, copies);
-      setReceiptActionStatus(`SMTP aceptó el reenvío de ${invoice.documentNumber} a ${invoice.customerEmail}.`);
+      setReceiptActionStatus(`Nuevo reenvío de ${invoice.documentNumber} aceptado por SMTP para ${invoice.customerEmail}${copies.length ? `; CC: ${copies.join('; ')}` : ''}.`);
       setReceiptSelected('');
       setReceiptCopies('');
       await refreshReceiptLogs();
@@ -913,20 +921,21 @@ export const AdminPanel: React.FC = () => {
                               </p>}
                               {lastReceiptLog(invoice)?.createdAt && <p className="mt-1 text-[11px] text-slate-500">{dateTime(lastReceiptLog(invoice)?.createdAt)}</p>}
                               {lastReceiptLog(invoice)?.cc?.length ? <p className="mt-1 text-[11px] text-slate-500">CC: {lastReceiptLog(invoice)?.cc?.join(', ')}</p> : null}
-                              {!receiptLogError && !receiptLogLoading && lastReceiptLog(invoice)?.status !== 'accepted' && (
+                              {!receiptLogError && !receiptLogLoading && (
                                 <div className="mt-2">
                                   <button type="button" onClick={()=>{setReceiptSelected(receiptSelected===invoice.id?'':invoice.id);setReceiptCopies('');setReceiptActionStatus('');}}
                                     className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800">
-                                    {receiptSelected===invoice.id?'Cancelar':'Enviar manualmente'}
+                                    {receiptSelected===invoice.id?'Cancelar':lastReceiptLog(invoice)?.status==='accepted'?'Reenviar PDF':'Enviar manualmente'}
                                   </button>
                                   {receiptSelected===invoice.id && (
                                     <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                                       <p className="text-[11px] font-bold">Para: {invoice.customerEmail}</p>
-                                      <label className="block text-[11px] font-semibold">Con copia (CC, opcional, máximo 3)
+                                      <label className="block text-[11px] font-semibold">Con copia (CC, opcional, hasta 3; separá con ;)
                                         <textarea rows={2} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
-                                          placeholder="copia1@correo.com, copia2@correo.com" value={receiptCopies}
+                                          placeholder="copia1@correo.com; copia2@correo.com" value={receiptCopies}
                                           onChange={event=>setReceiptCopies(event.target.value)}/>
                                       </label>
+                                      <p className="text-[11px] text-slate-600">El destinatario principal permanece igual. Cada reenvío se registra por separado y requiere confirmación.</p>
                                       <button type="button" disabled={!!receiptSending} onClick={()=>void resendInvoice(invoice)}
                                         className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                                         {receiptSending===invoice.id?'Enviando…':'Confirmar reenvío PDF'}
