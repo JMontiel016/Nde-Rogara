@@ -20,7 +20,7 @@ import { LocalVideoGallery } from './LocalVideoGallery';
 import { effectiveOwnerPlan, ownerHasProperty, ownerMediaUsage, propertyPhotoAllowance } from '../../data/publicationPlans';
 import { getNearbyPlaces, formatNearbyDistance, type NearbyPlace } from '../../services/nearbyPlaces';
 import { mapCenterForCity, matchCity, suggestParaguayCities } from '../../services/locationPreference';
-import { storeLocalVideo, MAX_DEMO_VIDEO_BYTES } from '../../services/videoMedia';
+import { MAX_VIDEO_BYTES, MAX_VIDEO_SECONDS, MAX_IMAGE_BYTES, uploadPropertyMedia, deletePropertyMedia } from '../../services/propertyMedia';
 import { submitPhotoForModeration } from '../../services/photoModeration';
 import { evaluateListing } from '../../services/adminGovernance';
 import { MapErrorBoundary } from '../common/MapErrorBoundary';
@@ -138,6 +138,7 @@ export const PublishModal: React.FC = () => {
   const [discountPercent, setDiscountPercent] = useState(0);
   const [checkingPhotos, setCheckingPhotos] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [mediaProgress, setMediaProgress] = useState(0);
   const [saveError, setSaveError] = useState('');
   const [photoAlert, setPhotoAlert] = useState('');
   const [photoInfo, setPhotoInfo] = useState('');
@@ -278,18 +279,33 @@ export const PublishModal: React.FC = () => {
   };
 
   const handleVideos = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []); event.currentTarget.value = '';
-    if (!files.length) return;
-    if (videos.length + files.length > planMaxVideos) { setSaveError(`El plan dispone de ${planMaxVideos} espacios de video para este aviso.`); return; }
-    setSaveError(''); setUploadingVideo(true);
-    try {
-      // Se guardan en IndexedDB; no se introduce ninguna URL ficticia.
-      for (const file of files) {
-        const reference = await storeLocalVideo(file);
-        setVideos(prev => [...prev, reference]);
+    const files=Array.from(event.target.files||[]);
+    event.currentTarget.value='';
+    if(!files.length||uploadingVideo)return;
+    if(videos.length+files.length>planMaxVideos){
+      setSaveError('Superaste el máximo de videos permitido por tu plan.');return;
+    }
+    setSaveError('');setUploadingVideo(true);setMediaProgress(0);
+    for(const file of files){
+      try{
+        const url=await uploadPropertyMedia(file,'video',setMediaProgress);
+        setVideos(prev=>prev.length<planMaxVideos?[...prev,url]:prev);
+      }catch(error){
+        setSaveError((prev)=>(prev?prev+' ':'')+file.name+': '+(error instanceof Error?error.message:'No se pudo subir.'));
       }
-    } catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo almacenar el video.'); }
-    finally { setUploadingVideo(false); }
+    }
+    setMediaProgress(0);setUploadingVideo(false);
+  };
+
+  // Permitir borrar una imagen o video antes de publicar y al editar.
+  // Storage solo permite borrar objetos del usuario que los subió.
+  const removeMedia = async (kind:'image'|'video',value:string)=>{
+    setSaveError('');
+    try{
+      await deletePropertyMedia(value);
+      if(kind==='image')setImages(prev=>prev.filter(x=>x!==value));
+      else setVideos(prev=>prev.filter(x=>x!==value));
+    }catch(error){setSaveError(error instanceof Error?error.message:'No se pudo eliminar el archivo.');}
   };
 
   const close = () => { setIsPublishModalOpen(false); setEditingProperty(null); };
@@ -469,14 +485,14 @@ export const PublishModal: React.FC = () => {
 
       <section className={sectionClass}>
         <BlockTitle number="4" icon={ImagePlus} title="Fotografías y recorridos en video" description="Los cupos se calculan automáticamente según el plan contratado y tus publicaciones existentes." />
-        <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-sky-200 bg-sky-50 p-4"><Camera size={22} className="text-sky-700" /><p className="mt-2 text-sm font-bold">Fotografías · {images.length} de {planMaxPhotos}</p><p className="mt-1 text-xs text-slate-600">JPG, PNG o WEBP · hasta 8 MB por imagen. La primera foto será la portada.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir fotografías<input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={checkingPhotos || images.length >= planMaxPhotos} onChange={event => void handlePhotos(event)} className="hidden" /></label>{checkingPhotos && <p className="mt-2 text-xs text-sky-700">Revisando imágenes…</p>}</div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><Video size={22} className="text-slate-700" /><p className="mt-2 text-sm font-bold">Videos · {videos.length} de {planMaxVideos}</p><p className="mt-1 text-xs text-slate-600">MP4 o WebM · hasta {Math.round(MAX_DEMO_VIDEO_BYTES / (1024 * 1024))} MB por video.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir videos<input type="file" multiple accept="video/mp4,video/webm" disabled={uploadingVideo || videos.length >= planMaxVideos} onChange={event => void handleVideos(event)} className="hidden" /></label>{uploadingVideo && <p className="mt-2 text-xs text-slate-600">Guardando los videos…</p>}</div></div>
+        <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-sky-200 bg-sky-50 p-4"><Camera size={22} className="text-sky-700" /><p className="mt-2 text-sm font-bold">Fotografías · {images.length} de {planMaxPhotos}</p><p className="mt-1 text-xs text-slate-600">JPG, PNG o WEBP · hasta 50 MB por imagen. La primera foto será la portada.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir fotografías<input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={checkingPhotos || images.length >= planMaxPhotos} onChange={event => void handlePhotos(event)} className="hidden" /></label>{checkingPhotos && <p className="mt-2 text-xs text-sky-700">Revisando imágenes…</p>}</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><Video size={22} className="text-slate-700" /><p className="mt-2 text-sm font-bold">Videos · {videos.length} de {planMaxVideos}</p><p className="mt-1 text-xs text-slate-600">MP4 o WebM · hasta {Math.round(MAX_VIDEO_BYTES / (1024 * 1024))} MB y {MAX_VIDEO_SECONDS} segundos por video.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir videos<input type="file" multiple accept="video/mp4,video/webm" disabled={uploadingVideo || videos.length >= planMaxVideos} onChange={event => void handleVideos(event)} className="hidden" /></label>{uploadingVideo && <p className="mt-2 text-xs text-slate-600">Subiendo videos… {mediaProgress}%</p>}</div></div>
         {photoAlert && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800">{photoAlert}</p>}
         {photoInfo && <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-semibold text-sky-800">{photoInfo}</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((src, index) => <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200"><img src={src} alt={`Foto ${index + 1}`} className="aspect-video w-full object-cover" /><div className="flex flex-wrap items-center justify-between gap-1 p-2 text-xs"><span>{index === 0 ? 'Portada' : `Foto ${index + 1}`}</span><div className="flex gap-1">{index > 0 && <button type="button" onClick={() => setImages(prev => [prev[index], ...prev.filter((_, i) => i !== index)])} className="rounded border px-1.5 py-1" title="Hacer portada">★</button>}<button type="button" onClick={() => setImages(prev => prev.filter((_, i) => i !== index))} title="Quitar foto" className="text-rose-700"><Trash2 size={16} /></button></div></div></div>)}</div>
-        {videos.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Videos cargados</p>{videos.map((reference, index) => <div key={reference} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span>Recorrido {index + 1}</span><button type="button" onClick={() => setVideos(prev => prev.filter(v => v !== reference))} className="flex items-center gap-1 text-rose-700"><Trash2 size={15} />Quitar</button></div>)}</div>}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((src, index) => <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200"><img src={src} alt={`Foto ${index + 1}`} className="aspect-video w-full object-cover" /><div className="flex flex-wrap items-center justify-between gap-1 p-2 text-xs"><span>{index === 0 ? 'Portada' : `Foto ${index + 1}`}</span><div className="flex gap-1">{index > 0 && <button type="button" onClick={() => setImages(prev => [prev[index], ...prev.filter((_, i) => i !== index)])} className="rounded border px-1.5 py-1" title="Hacer portada">★</button>}<button type="button" onClick={() => void removeMedia('image',src)} title="Eliminar foto" className="text-rose-700"><Trash2 size={16} /></button></div></div></div>)}</div>
+        {videos.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Videos cargados</p>{videos.map((reference, index) => <div key={reference} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span>Recorrido {index + 1}</span><button type="button" onClick={() => void removeMedia('video',reference)} className="flex items-center gap-1 text-rose-700"><Trash2 size={15} />Quitar</button></div>)}</div>}
         {videos.length > 0 && <LocalVideoGallery videos={videos} />}
-        <p className="text-xs text-slate-500">Los videos se guardan en el almacenamiento local de este navegador; no estarán visibles desde otros dispositivos hasta que se conecte un almacenamiento de archivos.</p>
+        <p className="text-xs text-slate-500">Los videos se almacenan en Firebase y podrán reproducirse desde otros dispositivos después de aprobar la publicación.</p>
       </section>
 
       <section className={sectionClass}>
