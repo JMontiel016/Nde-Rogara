@@ -546,3 +546,31 @@ Refrescar con `Ctrl + Shift + R`. Si aparece otro error de ejecución, abrir F12
 **Validaciones:** TypeScript y Vite compilan; 16 verificaciones de lógica y 7 de avisos/correo pasan; autenticación de muestra probada localmente (admin/inmobiliaria aceptados, contraseña incorrecta rechazada); factura generada en A4 y revisada visualmente; HTML del comprador escapa etiquetas. La entrega Git excluye `node_modules`, `dist`, `.env.local` y archivos temporales.
 
 **Limitaciones:** pagos, RUC y timbrado de demostración; no hay emisión fiscal SIFEN ni correo automático con PDF adjunto. Las cuentas de desarrollo no reemplazan un sistema de permisos y autenticación de servidor.
+
+
+---
+
+## Actualización de correo SMTP (2026-11-09)
+
+Archivos incorporados/modificados:
+- `backend/mailAdmin.mjs`: nueva API administrativa para guardar configuración SMTP cifrada con AES-256-GCM en Firestore, verificar conexión, enviar pruebas y consultar 50 registros de auditoría.
+- `backend/index.mjs`: conexión del módulo SMTP y actualización del envío manual para utilizar la configuración privada.
+- `src/components/admin/AdminSmtpSettings.tsx`: formulario responsive de proveedor, servidor, puerto, SSL/TLS, contraseña de aplicaciones, prueba e historial.
+- `src/components/admin/AdminMailCenter.tsx`: integra el nuevo formulario dentro del Centro de correo existente.
+- `backend/.env.example`: documenta `MAIL_ENCRYPTION_KEY`.
+
+### Configuración requerida para producción
+1. Configurar Firebase Admin/Firestore para el backend y autenticación Firebase para el frontend.
+2. Asignar custom claim `admin: true` únicamente a la cuenta administrativa real, desde un procedimiento privilegiado del servidor.
+3. Generar `MAIL_ENCRYPTION_KEY` mediante `openssl rand -hex 32` y mantenerla solo en el servidor, sin cambiarla mientras haya contraseñas cifradas.
+4. Habilitar el servicio backend y el proxy HTTPS /api o establecer la URL API del frontend.
+5. Acceder al Centro de correo con una sesión Firebase administrativa, completar configuración, guardar, verificar y realizar prueba.
+6. Revisar permisos de Firestore: los clientes no deben poder leer o escribir `private_configuration` ni `mail_delivery_logs`. El acceso se realiza mediante Firebase Admin SDK y endpoints protegidos.
+
+### Comportamiento y limitaciones
+- La contraseña de aplicaciones nunca se devuelve al frontend ni se registra en logs.
+- Los mensajes marcados como aceptados indican aceptación SMTP, **no entrega final en la bandeja**.
+- El administrador local de prueba no puede operar la configuración SMTP real: requiere sesión Firebase y claim `admin`.
+- Los comprobantes de compra y pagos del frontend siguen siendo **simulados**. No se implementó facturación SIFEN ni envío automático de facturas fiscales: requieren confirmación bancaria confiable en el servidor y un emisor fiscal habilitado. No enviar ni etiquetar un comprobante de demostración como factura fiscal.
+- La cuenta de email debe admitir autenticación SMTP por contraseña de aplicaciones o el método exigido por el proveedor.
+- No se realizó prueba real de envío SMTP ni compilación en este entorno: faltan credenciales de servidor y acceso de ejecución completo.
