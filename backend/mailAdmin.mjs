@@ -56,7 +56,7 @@ export function buildMailRouter(admin, authenticated, cors) {
     catch {res.status(503).json({error:'No se pudo consultar la configuración de correo.'});}
   });
   router.put('/settings',...auth,async(req,res)=>{
-    if(!secretKey)return res.status(503).json({error:'Definí MAIL_ENCRYPTION_KEY (64 caracteres hexadecimales) en el servidor.'});
+    if(!secretKey && req.body?.password)return res.status(503).json({error:'Para almacenar una nueva clave SMTP, definí MAIL_ENCRYPTION_KEY en el backend. También podés establecer SMTP_PASS como secreto del servidor.'});
     const x=req.body||{};
     const port=Number(x.port);
     if(!['gmail','outlook','custom'].includes(x.provider)||typeof x.host!=='string'||!/^[-a-z0-9.]{3,253}$/i.test(x.host)||!Number.isInteger(port)||port<1||port>65535||!emailOK(x.user)||!emailOK(x.from)|| (x.replyTo && !emailOK(x.replyTo))||typeof x.senderName!=='string'||x.senderName.length>100||typeof x.enabled!=='boolean'||typeof x.secure!=='boolean'||(x.password && (typeof x.password!=='string'||x.password.length>256)))return res.status(400).json({error:'Revisá los campos SMTP.'});
