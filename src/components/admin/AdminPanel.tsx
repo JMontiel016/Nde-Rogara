@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SiteContentEditor } from './SiteContentEditor';
 import { AdminMailCenter } from './AdminMailCenter';
+import { LocalVideoGallery } from '../properties/LocalVideoGallery';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -836,6 +837,20 @@ export const AdminPanel: React.FC = () => {
                                 <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                   {property.moderationReason || 'El anuncio necesita revisión por política interna.'}
                                 </p>
+                                {Boolean(property.images?.length) && (
+                                  <div className="mt-3 flex max-w-2xl flex-wrap gap-2" aria-label="Fotografías para revisar">
+                                    {property.images.slice(0,8).map((image,index)=>(
+                                      <a key={index} href={image} target="_blank" rel="noopener noreferrer"
+                                        title={`Abrir fotografía ${index+1}`}>
+                                        <img src={image} alt={`Fotografía ${index+1} de ${property.title}`}
+                                          className="h-20 w-24 rounded-lg border border-slate-200 bg-slate-100 object-cover"/>
+                                      </a>
+                                    ))}
+                                    {property.images.length>8 && <p className="text-xs text-slate-600">+{property.images.length-8} fotografías adicionales en Ver anuncio</p>}
+                                  </div>
+                                )}
+                                {Boolean(property.videos?.length) && <div className="mt-3 max-w-xl"><LocalVideoGallery videos={property.videos||[]}/></div>}
+                                <p className="mt-2 text-[11px] text-slate-500">Revisá imágenes y video antes de aprobar. Los archivos guardados solo en otro navegador no estarán disponibles para su inspección.</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <button className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold" onClick={() => openPropertyDetail(property.id)}>
