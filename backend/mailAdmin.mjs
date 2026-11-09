@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import nodemailer from 'nodemailer';
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 /** Configuración privada: Firestore + AES-256-GCM, sin credenciales en el navegador. */
 export function buildMailRouter(admin, authenticated, cors) {
@@ -11,7 +11,7 @@ export function buildMailRouter(admin, authenticated, cors) {
   const keyText = process.env.MAIL_ENCRYPTION_KEY || '';
   const secretKey = /^[a-f0-9]{64}$/i.test(keyText) ? Buffer.from(keyText, 'hex') : null;
   const auth = [cors, authenticated, (req,res,next) => req.user?.admin === true ? next() : res.status(403).json({error:'Solo un administrador autorizado puede gestionar el correo.'})];
-  const emailOK = s => typeof s === 'string' && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(s);
+  const emailOK = s => typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
   const encrypt = value => {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm',secretKey,iv);
