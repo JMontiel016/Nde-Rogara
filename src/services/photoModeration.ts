@@ -13,44 +13,63 @@ const MAX_SOURCE_BYTES = MAX_IMAGE_BYTES;
  * NO detecta contenido sexual, violencia ni material prohibido; por eso el aviso
  * permanece oculto hasta una revisión administrativa real.
  */
-async function prepareLocalPendingPhoto(file: File): Promise<ImageDecision> {
-  let bitmap: ImageBitmap | null = null;
+/** Decodificación compatible con navegadores que no soportan createImageBitmap. */
+async function loadPhoto(file: File): Promise<{ image: CanvasImageSource; width:number; height:number; release:()=>void }> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return {image:bitmap,width:bitmap.width,height:bitmap.height,release:()=>bitmap.close()};
+    } catch { /* Usar el decodificador de imágenes del navegador. */ }
+  }
+  const url=URL.createObjectURL(file);
   try {
-    bitmap = await createImageBitmap(file);
-    if (!bitmap.width || !bitmap.height) throw new Error('La imagen no contiene píxeles válidos.');
-    const canvas = document.createElement('canvas');
-    // Reducir progresivamente para evitar errores de cuota de localStorage.
-    // Se guarda una miniatura de presentación, no el archivo original de 50 MB.
-    const maxSize = 190_000;
-    let side = 1050;
-    let quality = 0.67;
-    let url = '';
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('No se pudo preparar la fotografía.');
-    for (let pass = 0; pass < 6; pass++) {
-      const ratio = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
-      canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
-      canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      // Al redibujar se eliminan metadatos EXIF, incluida la ubicación privada.
-      url = canvas.toDataURL('image/jpeg', quality);
-      if (url.length <= maxSize) break;
-      side = Math.round(side * 0.81);
-      quality = Math.max(0.38, quality - 0.08);
+    const image=new Image();
+    image.decoding='async';
+    image.src=url;
+    await new Promise<void>((resolve,reject)=>{
+      image.onload=()=>resolve();
+      image.onerror=()=>reject(new Error('El archivo no contiene una imagen compatible con el navegador.'));
+    });
+    return {image,width:image.naturalWidth,height:image.naturalHeight,release:()=>URL.revokeObjectURL(url)};
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+async function prepareLocalPendingPhoto(file: File): Promise<ImageDecision> {
+  let opened: Awaited<ReturnType<typeof loadPhoto>> | undefined;
+  try {
+    opened = await loadPhoto(file);
+    if (!opened.width || !opened.height) throw new Error('La fotografía no contiene píxeles válidos.');
+    const canvas=document.createElement('canvas');
+    const ctx=canvas.getContext('2d');
+    if (!ctx) throw new Error('Tu navegador no permite procesar esta imagen.');
+    const maxSize=190_000;
+    let side=1050,quality=0.67,url='';
+    for (let pass=0;pass<7;pass++) {
+      const ratio=Math.min(1,side/Math.max(opened.width,opened.height));
+      canvas.width=Math.max(1,Math.round(opened.width*ratio));
+      canvas.height=Math.max(1,Math.round(opened.height*ratio));
+      ctx.drawImage(opened.image,0,0,canvas.width,canvas.height);
+      // La versión de muestra no conserva EXIF ni datos privados de ubicación.
+      url=canvas.toDataURL('image/jpeg',quality);
+      if(url.length<=maxSize)break;
+      side=Math.round(side*0.8);
+      quality=Math.max(0.35,quality-0.07);
     }
-    if (url.length > maxSize) {
-      return { approved: false, reason: 'La imagen es demasiado compleja para guardarla localmente. Probá con otra resolución.' };
-    }
-    return { approved: true, url, pendingManualReview: true };
-  } catch {
-    return { approved: false, reason: 'No se pudo procesar la fotografía. Usá una imagen JPG, PNG o WebP válida.' };
+    if(url.length>maxSize)throw new Error('La imagen es demasiado compleja para guardarla en el navegador.');
+    return {approved:true,url,pendingManualReview:true};
+  } catch(error) {
+    return {approved:false,reason:error instanceof Error ? error.message : 'No se pudo procesar la fotografía.'};
   } finally {
-    bitmap?.close();
+    opened?.release();
   }
 }
 
 export async function submitPhotoForModeration(file: File, onProgress?: (percent:number)=>void): Promise<ImageDecision> {
-  if (!SUPPORTED.includes(file.type)) return { approved: false, reason: 'Solo se admiten fotografías JPG, PNG o WebP.' };
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (!SUPPORTED.includes(file.type) && !['jpg','jpeg','png','webp'].includes(extension || ''))
+    return { approved: false, reason: 'Formato no compatible. Elegí una fotografía JPG, PNG o WebP.' };
   if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar hasta 50 MB.' };
 
   // En modo gratuito/local la foto se guarda en el navegador inmediatamente.
