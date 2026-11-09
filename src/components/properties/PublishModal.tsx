@@ -301,7 +301,7 @@ export const PublishModal: React.FC = () => {
         setVideos(prev=>prev.length<planMaxVideos?[...prev,url]:prev);
       }catch(error){
         const reason=error instanceof Error?error.message:'No se pudo subir.';
-        if (/Firebase Storage|storage\\/|bucket|almacenamiento|permission|unauthorized|quota|not found|404|402|403|CORS|fetch|network/i.test(reason)) {
+        if (/Firebase Storage|storage|bucket|almacenamiento|permission|unauthorized|quota|not found|404|402|403|CORS|fetch|network/i.test(reason)) {
           try {
             const duration=await videoDuration(file);
             if(duration>MAX_VIDEO_SECONDS)throw new Error('El video debe durar como máximo 40 segundos.');
