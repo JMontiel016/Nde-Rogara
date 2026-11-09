@@ -275,8 +275,10 @@ export const PublishModal: React.FC = () => {
           setImages(prev => prev.length < planMaxPhotos ? [...prev, result.url] : prev);
           if (result.pendingManualReview) setPhotoInfo(result.url.startsWith('data:') ? 'Foto guardada para demostración en este navegador; no será visible en otros dispositivos.' : 'Foto subida. Quedará pendiente de verificación antes de aparecer públicamente.');
         }
-        else setPhotoAlert(result.reason);
+        else setPhotoAlert(prev => [prev, `${file.name}: ${result.reason}`].filter(Boolean).join(' | '));
       }
+    } catch(error) {
+      setPhotoAlert(error instanceof Error ? error.message : 'No se pudieron procesar las fotografías.');
     } finally { setCheckingPhotos(false); setMediaProgress(0); }
   };
 
