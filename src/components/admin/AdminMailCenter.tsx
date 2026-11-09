@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { AdminSmtpSettings } from './AdminSmtpSettings';
 import { CheckCircle2, Copy, ExternalLink, Mail, Send, ShieldCheck } from 'lucide-react';
 import { getPayments } from '../../services/billing';
 import {
@@ -85,6 +86,7 @@ export const AdminMailCenter: React.FC = () => {
       <p className="flex items-center gap-2 font-bold"><ShieldCheck size={17} /> Gestión de comunicaciones</p>
       <p className="mt-1">Los borradores se preparan localmente. Podés abrirlos en tu correo habitual. Para envío directo es necesario configurar el servidor SMTP con una cuenta Firebase autorizada como administradora.</p>
     </div>
+    <AdminSmtpSettings />
     <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
       <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
