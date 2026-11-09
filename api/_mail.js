@@ -50,7 +50,15 @@ function publicConfig(config) {
   return {...rest,hasPassword:!!passwordEncrypted||!!process.env.SMTP_PASS};
 }
 export function transport(config) {
-  const password=config.passwordEncrypted ? decrypt(config.passwordEncrypted) : process.env.SMTP_PASS;
+  // Si se rotó la clave de cifrado, la contraseña antigua podría no descifrarse.
+  // Un SMTP_PASS configurado en Vercel sirve de recuperación sin exponer la clave.
+  let password=process.env.SMTP_PASS;
+  if(config.passwordEncrypted) {
+    try{ password=decrypt(config.passwordEncrypted); }
+    catch(error){ if(!password)throw Object.assign(new Error(
+      'No se puede descifrar la clave SMTP almacenada. Volvé a guardarla usando una MAIL_ENCRYPTION_KEY válida.'
+    ),{status:503}); }
+  }
   if(!config.enabled||!password||!config.host||!config.user) {
     throw Object.assign(new Error('Configuración incompleta. Guardá la contraseña de aplicaciones o definí SMTP_PASS en Vercel.'),{status:503});
   }
@@ -106,8 +114,9 @@ export async function handleMail(req,res,route) {
       const updated={provider:x.provider,host:x.host.trim(),port:Number(x.port),secure:x.secure,
         user:x.user.trim(),from:x.from.trim(),senderName:x.senderName.trim()||'Nde Rogarã',
         replyTo:(x.replyTo||'').trim(),enabled:x.enabled,
-        passwordEncrypted:x.password?encrypt(x.password):config.passwordEncrypted||null,
+        passwordEncrypted:x.password?encrypt(x.provider==='gmail'?x.password.replace(/\s+/g,''):x.password):config.passwordEncrypted||null,
         updatedBy:user.uid,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+      // No marcar como probado: guardar ajustes y verificar conexión son acciones distintas.
       await ref.set(updated);
       return json(res,200,publicConfig(updated));
     }
