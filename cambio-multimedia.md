@@ -30,3 +30,15 @@ Este comando reemplaza las reglas de Storage anteriores por `storage.rules`; rev
 - Subida exitosa NO significa aprobación visual del contenido. Los avisos con multimedia continúan pendientes de revisión en Administración.
 - El límite de duración de video se comprueba en el navegador; para enforcement independiente de clientes maliciosos se necesitaría un proceso de análisis multimedia del lado del servidor.
 - No hay confirmación de cargas reales en Firebase hasta habilitar Storage, reglas y probar con archivos.
+
+
+## Parche urgente: demostración gratuita sin Storage
+- La carga de fotos y videos usa **modo local por defecto** sin intentar conectar a Firebase Storage, para evitar fallos de permisos/cobro en demostraciones.
+- Fotos: acepta hasta 50 MB de origen y las optimiza antes de guardar una vista local en el navegador.
+- Videos: se guardan como archivos binarios en IndexedDB del navegador con un máximo de **50 MB y 40 segundos** por video.
+- Las miniaturas de fotos y el reproductor de video permiten visualizar y quitar los medios antes de publicar.
+- Para activar después una biblioteca compartida en Firebase Storage, usar `VITE_MEDIA_STORAGE_MODE=firebase`, habilitar Storage y publicar reglas correctas.
+- Los cambios en GitHub no se ven en la web pública hasta que el despliegue termine en **Ready**.
+
+## Problema de Vercel Hobby
+Se constató `exceeded_serverless_functions_per_deployment` en los despliegues recientes. Para reducir el número de funciones se consolidaron cinco rutas de correo bajo `api/admin/mail/[...path].js`. También se consolidaron tres rutas QR en `api/checkout/[...path].js`. El límite de despliegues diarios puede seguir impidiendo la publicación inmediata.
