@@ -34,7 +34,7 @@ function checkBuyer(raw) {
   const customerRuc=docType==='ruc'?ruc+'-'+dv:ci;
   if(name.length<4||taxName.length<3||!emailOK(email)||!/^\+?[0-9 ()-]{8,}$/.test(clean(b.phone,32)))
     throw err(400,'Completá nombre, correo, celular y datos del comprobante.');
-  if(docType==='ruc' ? (!/^\d{3,9}$/.test(ruc)||!/^\d$/.test(dv)) : !/^\d{3,10}$/.test(ci))
+  if(docType==='ruc' ? (!/^\d{3,9}$/.test(ruc)||!/^\d$/.test(dv)) : !/^\d{1,7}$/.test(ci))
     throw err(400,'Revisá el número de CI o RUC y su dígito verificador.');
   return {customerName:taxName,customerEmail:email,customerRuc,customerDocumentType:docType,
     customerAddress:clean(b.address,180),customerPostalCode:clean(b.postalCode,10),phone:clean(b.phone,32),
