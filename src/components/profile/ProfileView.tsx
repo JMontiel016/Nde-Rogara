@@ -55,6 +55,7 @@ export const ProfileView: React.FC = () => {
   useEffect(() => { setForm(profileOf(currentUser)); setNotice(''); setError(''); }, [currentUser?.id]);
 
   if (!currentUser) return <div className="p-8">Iniciá sesión para editar tu perfil.</div>;
+  const usesGoogleOnly = firebaseAuth.getCurrentUser()?.providerId === 'google.com';
   const set = (key: keyof ProfileFields, value: string) => { setForm(current => ({ ...current, [key]: value })); setNotice(''); };
 
   const upload = async (file?: File) => {
@@ -191,7 +192,13 @@ export const ProfileView: React.FC = () => {
         <h2 className="flex items-center gap-2 text-lg font-black text-slate-950"><KeyRound size={20} className="text-sky-700" /> Seguridad de la cuenta</h2>
         <p className="mt-1 text-sm text-slate-500">Administrá el acceso a tu cuenta de Nde Rogarã.</p>
       </div>
-      <form onSubmit={changePassword} className="space-y-4 rounded-2xl border border-slate-100 p-4">
+      {usesGoogleOnly ? (
+        <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50 p-4">
+          <h3 className="font-bold text-slate-900">Cuenta vinculada con Google</h3>
+          <p className="text-sm text-slate-600">Tu acceso se realiza mediante Google. Nde Rogarã no conoce ni modifica la contraseña de tu cuenta de Google.</p>
+          <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="inline-flex rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800">Administrar seguridad de Google</a>
+        </div>
+      ) : <form onSubmit={changePassword} className="space-y-4 rounded-2xl border border-slate-100 p-4">
         <h3 className="font-bold text-slate-900">Cambiar contraseña</h3>
         <p className="text-xs text-slate-500">Disponible para cuentas con acceso por correo y contraseña. Si ingresás con Google, administrá tu contraseña desde Google.</p>
         <div className="grid gap-3 md:grid-cols-3">
@@ -209,7 +216,7 @@ export const ProfileView: React.FC = () => {
           <button type="submit" disabled={securityBusy} className="rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-800 disabled:opacity-50">Actualizar contraseña</button>
           <button type="button" disabled={securityBusy} onClick={() => void sendResetLink()} className="rounded-xl border border-sky-200 px-4 py-2.5 text-sm font-bold text-sky-700 hover:bg-sky-50 disabled:opacity-50">Recuperar por correo</button>
         </div>
-      </form>
+      </form>}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 p-4">
         <div>
           <h3 className="flex items-center gap-2 font-bold text-rose-800"><ShieldAlert size={18}/> Eliminar mi cuenta</h3>
@@ -223,9 +230,10 @@ export const ProfileView: React.FC = () => {
         <label className={fieldClass}>Escribí ELIMINAR
           <input className={inputClass} value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} autoComplete="off" required />
         </label>
-        <label className={fieldClass}>Contraseña actual (solo cuentas con contraseña; las cuentas Google mostrarán una ventana de verificación)
-          <input className={inputClass} type="password" autoComplete="current-password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
-        </label>
+        {!usesGoogleOnly && <label className={fieldClass}>Contraseña actual
+          <input className={inputClass} type="password" autoComplete="current-password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} required />
+        </label>}
+        {usesGoogleOnly && <p className="text-xs text-slate-600">Para confirmar, Google te pedirá que vuelvas a verificar tu identidad.</p>}
         <div className="flex flex-wrap gap-2">
           <button disabled={securityBusy || deleteConfirmation !== 'ELIMINAR'} type="submit" className="rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Eliminar definitivamente</button>
           <button type="button" disabled={securityBusy} onClick={() => { setDeleteDialog(false); setDeletePassword(''); setDeleteConfirmation(''); setError(''); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold">Cancelar</button>
