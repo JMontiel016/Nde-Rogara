@@ -40,6 +40,7 @@ import {
 import { soundManager } from '../utils/audioNotifications';
 import { formatGs } from '../utils/formatters';
 import { firebaseAuth } from '../services/firebaseAuth';
+import { fetchCloudProperties, saveCloudProperty, moderateCloudProperty } from '../services/propertyCloud';
 import { getVisitorId } from '../services/reviewerIdentity';
 import { canUseLocalDevAdmin, LOCAL_DEV_ADMIN_EMAIL, LOCAL_DEV_OWNER_EMAIL } from '../services/adminAccessMode';
 import { evaluateListing, recordModeration } from '../services/adminGovernance';
@@ -140,10 +141,10 @@ interface AppContextType {
   setIsPremiumModalOpen: (val: boolean) => void;
   isPublishModalOpen: boolean;
   setIsPublishModalOpen: (val: boolean) => void;
-  addProperty: (property: Property) => void;
-  updateProperty: (property: Property) => void;
+  addProperty: (property: Property) => Promise<void>;
+  updateProperty: (property: Property) => Promise<void>;
   deleteProperty: (id: string) => void;
-  moderateProperty: (id: string, action: 'approved' | 'removed', reason: string) => void;
+  moderateProperty: (id: string, action: 'approved' | 'removed', reason: string) => Promise<void>;
   reviewModeration: (id: string, status: 'published' | 'hidden') => void;
   togglePropertyStatus: (id: string) => void;
   clearAllProperties: () => void;
@@ -443,6 +444,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_PROPERTIES;
     }
   });
+
+  // Sincroniza avisos compartidos al abrir la web, cambiar de cuenta y mientras
+  // esté abierto el panel. Cada cuenta conserva sus borradores locales previos.
+  useEffect(() => {
+    let active=true;
+    const scope=userRole==='admin'?'admin':currentUser?'mine':'public';
+    const sync=async()=>{
+      try{
+        const remote=await fetchCloudProperties(scope);
+        if(!active)return;
+        setProperties(previous=>{
+          const keys=new Set(remote.map(p=>p.id));
+          const merged=[...remote,...previous.filter(p=>!keys.has(p.id))];
+          try{persistPropertyList(merged);}catch{/* Catálogo remoto permanece visible aunque falte espacio local. */}
+          return merged;
+        });
+      }catch(error){
+        // Mantener anuncios del navegador si falla la red; nunca borrarlos por 503.
+        if(import.meta.env.DEV)console.warn('Catálogo remoto no disponible:',error);
+      }
+    };
+    void sync();
+    const interval=window.setInterval(()=>{if(!document.hidden)void sync();},30000);
+    return ()=>{active=false;window.clearInterval(interval);};
+  },[currentUser?.id,userRole]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
@@ -1251,7 +1277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsPublishModalOpen(true);
   };
 
-  const addProperty = (newProp: Property) => {
+  const addProperty = async (newProp: Property):Promise<void> => {
     if (!currentUser || currentUser.status === 'inactive' || !(userRole === 'landlord' || userRole === 'admin' && isLocalAdmin())) return;
     const propWithStatus: Property = {
       ...newProp,
@@ -1277,8 +1303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     propWithStatus.isActive = !flagged;
     // Guardar primero: si el navegador agotó su cuota, el formulario mostrará
     // el problema sin cerrar ni dar por publicada una operación incompleta.
-    const updated = [propWithStatus, ...properties];
-    persistPropertyList(updated);
+    const cloud=await saveCloudProperty(propWithStatus);
+    const updated = [cloud, ...properties.filter(p=>p.id!==cloud.id)];
+    try{persistPropertyList(updated);}catch{/* Guardado compartido correcto: no cancelar el anuncio por cuota local. */}
     setProperties(updated);
     if (flagged) recordModeration(propWithStatus, 'flagged',
       alertReason || 'Pendiente de revisión administrativa',
@@ -1291,7 +1318,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateProperty = (updated: Property) => {
+  const updateProperty = async (updated: Property):Promise<void> => {
     if (currentUser?.status === 'inactive') return;
     const admin = userRole === 'admin' && isLocalAdmin();
     const previous = properties.find(p => p.id === updated.id);
@@ -1330,8 +1357,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       guarded.moderationReason||'Requiere revisión',
       nextFlag?'Filtro automático de texto':'Multimedia nueva pendiente de revisión');
 
-    const list = properties.map(p => p.id === updated.id ? guarded : p);
-    persistPropertyList(list);
+    const cloud=await saveCloudProperty(guarded);
+    const list = properties.map(p => p.id === updated.id ? cloud : p);
+    try{persistPropertyList(list);}catch{/* El servidor conserva los cambios aunque se llene el navegador. */}
     setProperties(list);
     // El formulario se cierra solo al confirmar: no reiniciar antes de mostrar éxito.
     addNotification({
@@ -1342,13 +1370,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const moderateProperty = (id: string, action: 'approved' | 'removed', reason: string) => {
+  const moderateProperty = async (id: string, action: 'approved' | 'removed', reason: string):Promise<void> => {
     if (!currentUser || userRole !== 'admin' || !isLocalAdmin()) return;
     const target = properties.find(p => p.id === id);
     if (!target || !reason.trim()) return;
     const owner = registeredUsers.find(user => user.role === 'landlord' && ownerPropertyMatch(target, user));
     // Aun con aprobación manual, nunca reactivar un aviso de una cuenta sancionada.
     if (action === 'approved' && owner?.status === 'inactive') return;
+    await moderateCloudProperty(id,action,reason.trim());
     const approvedAt = new Date().toISOString();
     const next: Property = {
       ...target, moderationStatus: action, moderationReason: reason.trim(),
