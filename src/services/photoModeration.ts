@@ -9,7 +9,7 @@ const SUPPORTED = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SOURCE_BYTES = MAX_IMAGE_BYTES;
 
 /**
- * Respaldo exclusivo de desarrollo: reduce una foto válida para la muestra local.
+ * Respaldo gratuito de demostración: reduce una foto válida para la muestra local.
  * NO detecta contenido sexual, violencia ni material prohibido; por eso el aviso
  * permanece oculto hasta una revisión administrativa real.
  */
@@ -42,12 +42,18 @@ export async function submitPhotoForModeration(file: File, onProgress?: (percent
   if (!SUPPORTED.includes(file.type)) return { approved: false, reason: 'Solo se admiten fotografías JPG, PNG o WebP.' };
   if (file.size === 0 || file.size > MAX_SOURCE_BYTES) return { approved: false, reason: 'La fotografía debe pesar hasta 50 MB.' };
 
-  // Firebase Storage guarda las imágenes de todos los usuarios. El archivo
-  // permanece pendiente de revisión visual; subir no equivale a aprobar.
+  // Intentar la subida en la nube y, si Storage no está habilitado,
+  // permitir una fotografía reducida para mostrarla solo en este navegador.
+  // Ninguna ruta implica aprobación automática de contenido visual.
   try {
     const url = await uploadPropertyMedia(file, 'image', onProgress);
     return { approved: true, url, pendingManualReview: true };
   } catch (error) {
-    return { approved: false, reason: error instanceof Error ? error.message : 'No se pudo subir la fotografía.' };
+    const reason = error instanceof Error ? error.message : 'No se pudo subir la fotografía.';
+    if (/Firebase Storage|storage\/|bucket|almacenamiento|permission|unauthorized|quota|not found|404|402|403|CORS|fetch|network/i.test(reason)) {
+      const local = await prepareLocalPendingPhoto(file);
+      return local;
+    }
+    return { approved: false, reason };
   }
 }
