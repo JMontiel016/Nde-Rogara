@@ -146,6 +146,7 @@ export const PublishModal: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [reviewPending, setReviewPending] = useState(false);
   const autoNearbyRef = useRef<string[]>([]);
+  const locationSectionRef = useRef<HTMLElement | null>(null);
 
   const plan = effectiveOwnerPlan(currentUser?.id);
   const mediaUsage = ownerMediaUsage(properties, currentUser, editingProperty?.id);
@@ -347,7 +348,17 @@ export const PublishModal: React.FC = () => {
     if (title.trim().length < 8) { setSaveError('Ingresá un título descriptivo de al menos 8 caracteres.'); return; }
     if (type === 'Otro' && (customType.trim().length < 3 || customType.trim().length > 55)) { setSaveError('Escribí el tipo de inmueble (entre 3 y 55 caracteres).'); return; }
     if (priceMonth < 1) { setSaveError('Ingresá el precio mensual del alquiler.'); return; }
-    if (!city.trim() || !neighborhood.trim() || !address.trim() || !locationConfirmed) { setSaveError('Completá la ciudad, barrio y dirección, y confirmá el punto en el mapa.'); return; }
+    if (!city.trim() || !neighborhood.trim() || !address.trim()) {
+      setSaveError('Completá ciudad, barrio y una dirección o referencia para ubicar el inmueble.');
+      locationSectionRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+      return;
+    }
+    if (!locationConfirmed) {
+      setSaveError('Falta confirmar la ubicación: en la sección 2, tocá el mapa o presioná «Confirmar este punto».');
+      setShowLocationMap(true);
+      locationSectionRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+      return;
+    }
     if (!matchCity(city, properties)) { setSaveError('Seleccioná una ciudad registrada de Paraguay en el buscador.'); return; }
     if (coordinates[0] > -19 || coordinates[0] < -28 || coordinates[1] > -54 || coordinates[1] < -63) { setSaveError('La ubicación seleccionada está fuera del territorio de Paraguay.'); return; }
     if (!Number.isFinite(areaM2) || areaM2 <= 0 || bathrooms < 1) { setSaveError('Completá la superficie y al menos un baño.'); return; }
@@ -465,7 +476,7 @@ export const PublishModal: React.FC = () => {
         </div>
       </section>
 
-      <section className={sectionClass}>
+      <section ref={locationSectionRef} className={sectionClass}>
         <BlockTitle number="2" icon={MapPin} title="Dirección y ubicación" description="Buscá la dirección o elegí el punto exacto con el marcador. La ubicación del mapa es orientativa hasta que la confirmes." />
         <div className="grid gap-3 sm:grid-cols-3">
           <label className={labelClass}>Ciudad de Paraguay *<input className={inputClass} value={city} onChange={event => changeCity(event.target.value)} list="nd-paraguay-city-options" placeholder="Escribí la ciudad" required />
@@ -488,7 +499,28 @@ export const PublishModal: React.FC = () => {
             </MapContainer>
           </div>
         </MapErrorBoundary>}
-        <p className={`flex items-center gap-2 text-xs ${locationConfirmed ? 'text-emerald-700' : 'text-slate-600'}`}><MapPin size={16} />{locationConfirmed ? `Ubicación seleccionada: ${coordinates[0].toFixed(5)}, ${coordinates[1].toFixed(5)}` : 'Tocá el mapa para señalar el inmueble y confirmar su ubicación.'}</p>
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${locationConfirmed ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          <p role="status" className={`flex items-center gap-2 text-xs font-semibold ${locationConfirmed?'text-emerald-800':'text-amber-900'}`}>
+            <MapPin size={16} />
+            {locationConfirmed ? `Punto confirmado: ${coordinates[0].toFixed(5)}, ${coordinates[1].toFixed(5)}`
+              : 'Ubicación pendiente: marcá el lugar en el mapa o confirmá el punto seleccionado.'}
+          </p>
+          <button type="button"
+            disabled={!city.trim() || !neighborhood.trim() || !address.trim() || !matchCity(city,properties)}
+            onClick={() => {
+              if(!Number.isFinite(coordinates[0]) || !Number.isFinite(coordinates[1]) ||
+                  coordinates[0] < -28 || coordinates[0] > -19 || coordinates[1] < -63 || coordinates[1] > -54) {
+                setAddressError('El punto está fuera de Paraguay. Elegí un lugar válido.');
+                return;
+              }
+              setLocationConfirmed(true);
+              setAddressError('');
+              setSaveError('');
+            }}
+            className="rounded-xl bg-sky-700 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+            {locationConfirmed ? 'Confirmar de nuevo' : 'Confirmar este punto'}
+          </button>
+        </div>
         {city.trim() && !matchCity(city, properties) && <p className="text-xs text-amber-700">Si la ciudad no aparece en el catálogo, buscá la dirección para confirmar que pertenezca a Paraguay.</p>}
       </section>
 
