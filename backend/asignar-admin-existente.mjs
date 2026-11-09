@@ -1,45 +1,41 @@
 /**
- * Crear o habilitar una ÚNICA cuenta de administración en Firebase Auth.
- * Uso manual con credenciales privadas de Firebase Admin; nunca en Vercel build.
- * No modifica usuarios de inmobiliaria ni contraseñas de cuentas existentes.
+ * Cambia la administración principal a la cuenta REAL de Google.
+ *
+ * Ejecutar una única vez desde un entorno privado con Firebase Admin SDK.
+ * No cambia contraseñas, métodos de acceso ni crea cuentas ficticias.
+ * Nunca ejecutar este script en el navegador o durante el build de Vercel.
  */
 import admin from 'firebase-admin';
-import { randomBytes } from 'node:crypto';
 
-const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-  console.error('Definí ADMIN_EMAIL con una dirección real a la que tengas acceso.');
-  process.exit(1);
-}
-if (email === '016.jmma@gmail.com') {
-  console.error('La cuenta de la inmobiliaria no se convertirá en administrador.');
-  process.exit(1);
-}
-const configuredPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
-if (configuredPassword && (configuredPassword.length < 14 || configuredPassword.toLowerCase() === email)) {
-  console.error('ADMIN_INITIAL_PASSWORD debe tener al menos 14 caracteres y ser distinta del correo.');
-  process.exit(1);
-}
+const principal = '016.jmma@gmail.com';
+const anterior = 'admin@admin.com.py';
 
-if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
+if (!admin.apps.length) {
+  admin.initializeApp({ credential: admin.credential.applicationDefault() });
+}
 const auth = admin.auth();
-let record;
-let created = false;
+
+// Verificar primero que el usuario principal exista.
+const user = await auth.getUserByEmail(principal);
+if (user.disabled) throw new Error('La cuenta principal está deshabilitada en Firebase. Revisala antes de continuar.');
+
+// Mantener claims ajenos al rol y habilitar solamente el privilegio administrativo.
+await auth.setCustomUserClaims(user.uid, { ...(user.customClaims || {}), admin: true });
+console.log('Administrador principal habilitado:', principal);
+
+// El correo antiguo no debe conservar el rol admin, si aún existe.
 try {
-  record = await auth.getUserByEmail(email);
-} catch (error) {
-  if (error?.code !== 'auth/user-not-found') throw error;
-  const password = configuredPassword || randomBytes(24).toString('base64url');
-  record = await auth.createUser({
-    email, password, disabled: false, emailVerified: false,
-    displayName: 'Administración Nde Rogarã'
-  });
-  created = true;
-  console.log('Cuenta administradora creada:', email);
-  // Solo se imprime en la terminal privada, nunca en Git, logs de Vercel o frontend.
-  if (!configuredPassword) console.log('Contraseña inicial (guardala en un gestor):', password);
+  const oldUser = await auth.getUserByEmail(anterior);
+  if (oldUser.uid !== user.uid && oldUser.customClaims?.admin === true) {
+    const claims = { ...(oldUser.customClaims || {}) };
+    delete claims.admin;
+    await auth.setCustomUserClaims(oldUser.uid, claims);
+    await auth.revokeRefreshTokens(oldUser.uid);
+    console.log('Permiso anterior revocado:', anterior);
+  }
+} catch (err) {
+  if (err?.code !== 'auth/user-not-found') throw err;
+  console.log('El usuario administrador anterior ya no existe.');
 }
-const claims = { ...(record.customClaims || {}), admin: true };
-await auth.setCustomUserClaims(record.uid, claims);
-console.log(created ? 'Permiso admin asignado.' : 'Cuenta existente: permiso admin actualizado sin alterar su contraseña.');
-console.log('Cerrá sesión y volvé a iniciar para renovar los permisos.');
+await auth.revokeRefreshTokens(user.uid);
+console.log('Listo. Cerrá sesión y volvé a ingresar con Google para actualizar los permisos.');
