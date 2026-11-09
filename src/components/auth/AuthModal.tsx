@@ -87,13 +87,21 @@ export const AuthModal: React.FC = () => {
           });
         } else {
           const fb = await firebaseAuth.signInWithEmail(mail, password, 'landlord');
-          // Nunca elevar un perfil local a administrador mediante el formulario.
+          // Solo los claims firmados de Firebase conceden permisos administrativos.
+          const isAdmin = await firebaseAuth.isVerifiedAdmin();
           const profile = registeredUsers.find(u => u.id === fb.uid && u.email.toLowerCase() === mail && u.role === 'landlord');
           if (profile?.status === 'inactive') {
             await firebaseAuth.signOut();
             throw new Error('Esta cuenta está suspendida. Contactá a soporte.');
           }
-          loginUser(profile || { id: fb.uid, name: fb.displayName || mail.split('@')[0], email: mail, role: 'landlord', phone: '', status: 'active' });
+          loginUser({
+            id: fb.uid,
+            name: profile?.name || fb.displayName || mail.split('@')[0],
+            email: mail,
+            role: isAdmin ? 'admin' : 'landlord',
+            phone: profile?.phone || '',
+            status: 'active'
+          });
         }
       } else if (registering) {
         if (registeredUsers.some(u => u.email.toLowerCase() === mail)) throw new Error('Este correo ya está registrado.');
