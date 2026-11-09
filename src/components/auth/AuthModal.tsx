@@ -78,6 +78,34 @@ export const AuthModal: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  /** Permite entrar a los usuarios que ya se registraron mediante Google. */
+  const enterWithGoogle = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const user = await firebaseAuth.signInWithGoogle('landlord');
+      const mail = (user.email || '').toLowerCase();
+      const stored = registeredUsers.find(entry => entry.id === user.uid && entry.email.toLowerCase() === mail && entry.role === 'landlord');
+      if (stored?.status === 'inactive') {
+        await firebaseAuth.signOut();
+        throw new Error('Esta cuenta está suspendida. Contactá a soporte.');
+      }
+      loginUser({
+        id: user.uid,
+        email: mail,
+        name: stored?.name || user.displayName || 'Propietario',
+        role: user.role === 'admin' ? 'admin' : 'landlord',
+        phone: stored?.phone || '',
+        status: 'active'
+      });
+    } catch (err) {
+      setError(err instanceof Error && 'code' in err ? formatFirebaseAuthError(err) :
+        err instanceof Error ? err.message : 'No se pudo ingresar con Google.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -255,6 +283,17 @@ export const AuthModal: React.FC = () => {
           {busy ? 'Procesando…' : resetMode ? 'Enviar enlace de recuperación' : registering ? 'Crear mi cuenta' : 'Ingresar'}
           {!busy && <ArrowRight size={17} aria-hidden="true" />}
         </button>
+        {!resetMode && !registering && firebaseAuth.isConfigured() && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 text-xs text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" /> o también <span className="h-px flex-1 bg-slate-200" />
+            </div>
+            <button type="button" onClick={() => void enterWithGoogle()} disabled={busy}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">
+              Continuar con Google
+            </button>
+          </div>
+        )}
         <div className="border-t border-slate-100 pt-4 text-center text-sm text-slate-500">
           {resetMode ? '¿Recordaste tu contraseña?' : registering ? '¿Ya tenés una cuenta?' : '¿Todavía no tenés una cuenta?'}{' '}
           <button type="button" className="font-bold text-sky-700 hover:text-sky-900 hover:underline"
