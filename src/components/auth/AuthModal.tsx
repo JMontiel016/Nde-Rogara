@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, KeyRound, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { firebaseAuth, formatFirebaseAuthError } from '../../services/firebaseAuth';
@@ -70,9 +70,9 @@ export const AuthModal: React.FC = () => {
     try {
       if (!adminSetup && authModalMode === 'login' && allowDevAdmin && mail === LOCAL_DEV_ADMIN_EMAIL) {
         // Cuentas predeterminadas exclusivamente para demos locales; nunca autorización Firebase.
-        if (!(await authorizeLocalDemo(mail, password)) || !loginDevAdmin()) throw new Error('Credenciales de demostración inválidas o no configuradas en .env.local.');
+        if (!(await authorizeLocalDemo(mail, password)) || !loginDevAdmin()) throw new Error('Correo o contraseña incorrectos.');
       } else if (!adminSetup && authModalMode === 'login' && allowDevAdmin && mail === LOCAL_DEV_OWNER_EMAIL) {
-        if (!(await authorizeLocalDemo(mail, password)) || !loginDevOwner()) throw new Error('Credenciales de demostración inválidas o cuenta suspendida.');
+        if (!(await authorizeLocalDemo(mail, password)) || !loginDevOwner()) throw new Error('Correo o contraseña incorrectos.');
       } else if (adminSetup) {
         if (!allowBootstrap) throw new Error('El administrador ya existe o la configuración inicial no está disponible.');
         const hashed = await encodePassword(password);
@@ -95,7 +95,7 @@ export const AuthModal: React.FC = () => {
       } else {
         const account = registeredUsers.find(u => u.email.toLowerCase() === mail && (u.role === 'landlord' || u.role === 'admin'));
         if (!account || !(await verifyPassword(password, account.password, account.role === 'admin')))
-          throw new Error('Correo o contraseña incorrectos. Si es tu primera vez, configurá el administrador local.');
+          throw new Error('Correo o contraseña incorrectos.');
         if (account.status === 'inactive') throw new Error('Esta cuenta está suspendida. Contactá a administración.');
         loginUser(account);
       }
@@ -106,7 +106,7 @@ export const AuthModal: React.FC = () => {
 
   return <Modal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} maxWidth="md" title={adminSetup ? 'Crear administrador local' : authModalMode === 'register' ? 'Registrarse como propietario' : 'Ingresar a mi cuenta'}>
     <form onSubmit={submit} autoComplete="off" className="space-y-4">
-      {adminSetup ? <p className="text-sm text-slate-700 bg-sky-50 rounded-xl p-3">Configuración inicial del panel de administración <strong>para pruebas en este navegador</strong>. Elegí tu propio correo y contraseña. No hay claves predeterminadas.</p> : <p className="text-sm text-slate-600">Buscá y contactá propiedades sin cuenta. Ingresá para gestionar tus publicaciones o el panel de administración.</p>}
+      {adminSetup ? <p className="text-sm text-slate-700 bg-sky-50 rounded-xl p-3">Configuración inicial del panel de administración <strong>para pruebas en este navegador</strong>. Elegí tu propio correo y contraseña. No hay claves predeterminadas.</p> : <p className="text-sm text-slate-600">Ingresá para gestionar tus publicaciones y tu cuenta.</p>}
       {(adminSetup || authModalMode === 'register') && <label className="block text-sm font-semibold">Nombre completo<input required value={name} onChange={e => setName(e.target.value)} className="mt-1 w-full p-3 rounded-xl border border-slate-200" autoComplete="name" /></label>}
       {!adminSetup && authModalMode === 'register' && <label className="block text-sm font-semibold">Teléfono / WhatsApp<input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0981 123456" className="mt-1 w-full p-3 rounded-xl border border-slate-200" /></label>}
       <label className="block text-sm font-semibold">Correo electrónico<input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-1 w-full p-3 rounded-xl border border-slate-200" autoComplete="off" /></label>
@@ -119,10 +119,7 @@ export const AuthModal: React.FC = () => {
         <label className="flex gap-2 items-start cursor-pointer"><input type="checkbox" checked={acceptedPolicy} onChange={e=>setAcceptedPolicy(e.target.checked)} className="mt-0.5" required />Leí y acepto las políticas de publicaciones, moderación y contratación de Nde Rogarã.</label>
       </div>}
       {error && <p role="alert" className="flex items-start gap-2 text-xs text-red-700 p-3 bg-red-50 rounded-xl"><AlertCircle className="w-4 h-4 shrink-0" />{error}</p>}
-      {local && <p className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 rounded-xl p-3"><LockKeyhole className="w-4 h-4 shrink-0" />Las cuentas y sus contraseñas derivadas se guardan solo en este navegador. No tienen seguridad de servidor ni funcionan en otros dispositivos. No usar con datos reales.</p>}
-      {!local && <p className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 rounded-xl p-3"><ShieldCheck className="w-4 h-4 shrink-0" />Con Firebase conectado, el administrador debe habilitarse mediante permisos verificados en un servidor. Crear una cuenta de propietario no concede privilegios.</p>}
       <button disabled={busy} className="w-full p-3 rounded-xl bg-brand-600 text-white font-bold disabled:opacity-60" type="submit">{busy ? 'Procesando...' : adminSetup ? 'Crear mi administrador' : authModalMode === 'register' ? 'Crear cuenta de propietario' : 'Ingresar'}</button>
-      {allowBootstrap && authModalMode === 'login' && <button type="button" className="w-full border border-sky-300 bg-sky-50 text-sky-800 rounded-xl p-3 text-sm font-bold flex items-center justify-center gap-2" onClick={() => { setAdminSetup(v => !v); setError(''); setPassword(''); setPasswordConfirm(''); }}><KeyRound className="w-4 h-4" />{adminSetup ? 'Volver al inicio de sesión' : 'Configurar administrador (primera vez)'}</button>}
       {!adminSetup && <button type="button" className="w-full text-center text-brand-700 text-sm font-bold py-2" onClick={() => setAuthModalMode(authModalMode === 'register' ? 'login' : 'register')}>{authModalMode === 'register' ? 'Ya tengo una cuenta' : 'Crear cuenta para publicar'}</button>}
     </form>
   </Modal>;
