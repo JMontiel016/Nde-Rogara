@@ -35,7 +35,8 @@ import { adminUserEvents } from '../../services/adminUsers';
 import { getPayments } from '../../services/billing';
 import { fetchFiscalInvoices, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
 import { getReceiptMailLogs, resendReceiptFromAdmin, type ReceiptMailLog } from '../../services/adminReceiptMail';
-import type { Property, UserProfile } from '../../types';
+import type { Property, UserProfile, PropertyReview } from '../../types';
+import { firebaseAuth } from '../../services/firebaseAuth';
 
 type Tab = 'overview' | 'owners' | 'alerts' | 'reviews' | 'invoices' | 'site' | 'mail';
 
@@ -136,6 +137,9 @@ export const AdminPanel: React.FC = () => {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
   const [pdfError, setPdfError] = useState('');
+  const [blockedReviews, setBlockedReviews] = useState<(PropertyReview & {moderationReason?:string})[]>([]);
+  const [reviewIssue, setReviewIssue] = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [receiptLogs, setReceiptLogs] = useState<ReceiptMailLog[]>([]);
   const [receiptLogLoading, setReceiptLogLoading] = useState(false);
   const [receiptLogError, setReceiptLogError] = useState('');
@@ -215,6 +219,35 @@ export const AdminPanel: React.FC = () => {
     } finally { setReceiptSending(''); }
   };
 
+  const loadBlockedReviews = async () => {
+    setReviewLoading(true);setReviewIssue('');
+    try {
+      const token=await firebaseAuth.getFreshIdToken();
+      if(!token)throw new Error('Iniciá sesión con la cuenta de Firebase autorizada.');
+      const response=await fetch('/api/admin/reviews',{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+      const data:{reviews?:(PropertyReview & {moderationReason?:string})[];error?:string}
+        =await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'No se pudieron consultar reseñas.');
+      setBlockedReviews(data.reviews||[]);
+    }catch(err){setReviewIssue(err instanceof Error?err.message:'No fue posible cargar las alertas.');}
+    finally{setReviewLoading(false);}
+  };
+  // Solo se consulta al abrir esta sección, nunca se hace polling cuando está vacía.
+  useEffect(()=>{if(tab==='reviews' && userRole==='admin')void loadBlockedReviews();},[tab,userRole]);
+  const resolveBlockedReview = async (id:string,action:'publish'|'hide') => {
+    setReviewIssue('');
+    try {
+      const token=await firebaseAuth.getFreshIdToken();
+      if(!token)throw new Error('Sesión de administrador no válida.');
+      const response=await fetch('/api/admin/reviews',{method:'POST',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({id,action})});
+      const data:{error?:string}=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||'No se pudo moderar.');
+      await loadBlockedReviews();
+    }catch(err){setReviewIssue(err instanceof Error?err.message:'No se pudo procesar el caso.');}
+  };
+
   const ownerRows = useMemo<OwnerRow[]>(() => {
     const rows = new Map<string, OwnerRow>();
     const users = registeredUsers.filter((u) => u.role === 'landlord');
@@ -278,7 +311,7 @@ export const AdminPanel: React.FC = () => {
   const flaggedProperties = properties
     .filter((property) => property.moderationStatus === 'flagged')
     .sort((a, b) => (a.images?.length || 0) - (b.images?.length || 0));
-  const pendingReviews = reviews.filter((review) => review.propertyId && review.status === 'pending');
+  const pendingReviews = blockedReviews;
   const publishedProperties = properties.filter(
     (property) => property.moderationStatus !== 'removed' && property.isActive !== false,
   );
@@ -763,42 +796,44 @@ export const AdminPanel: React.FC = () => {
 
             {tab === 'reviews' && (
               <section className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-black text-slate-900">Reseñas</h2>
-                  <p className="mt-1 text-sm text-slate-500">Los mensajes ofensivos o prohibidos deben quedar bloqueados antes de publicarse.</p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900">Reseñas bloqueadas</h2>
+                    <p className="mt-1 text-sm text-slate-500">Las reseñas permitidas se publican automáticamente en su inmueble. Aquí solo aparecen denuncias detectadas por el filtro.</p>
+                  </div>
+                  <button type="button" disabled={reviewLoading} onClick={()=>void loadBlockedReviews()}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">
+                    {reviewLoading?'Consultando…':'Actualizar casos'}
+                  </button>
                 </div>
+                {reviewIssue && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{reviewIssue}</p>}
                 <div className={`${shell} divide-y`}>
-                  {reviews.filter((review) => review.propertyId).length === 0 ? (
-                    <Empty>No se registraron reseñas todavía.</Empty>
-                  ) : (
-                    reviews
-                      .filter((review) => review.propertyId)
-                      .map((review) => (
-                        <article key={review.id} className="p-5">
-                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <p className="font-black text-slate-900">{review.author}</p>
-                                <span className="text-amber-500">{'★'.repeat(Math.max(1, Math.min(5, review.rating)))}</span>
-                                <Pill color={review.status === 'published' ? 'green' : review.status === 'hidden' ? 'red' : 'amber'}>
-                                  {review.status === 'published' ? 'Publicada' : review.status === 'hidden' ? 'Oculta' : 'Pendiente'}
-                                </Pill>
-                              </div>
-                              <p className="mt-1 text-xs text-slate-500">{review.propertyTitle} · {dateTime(review.date)}</p>
-                              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{review.comment}</p>
-                            </div>
-                            <div className="flex gap-2">
-                              <button className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => reviewModeration(review.id, 'published')}>
-                                <Check size={16} /> Publicar
-                              </button>
-                              <button className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700" onClick={() => reviewModeration(review.id, 'hidden')}>
-                                Ocultar
-                              </button>
-                            </div>
+                  {reviewLoading && <p className="p-5 text-sm text-slate-500">Verificando contenido bloqueado…</p>}
+                  {!reviewLoading && blockedReviews.length===0 && <Empty>No hay reseñas bloqueadas. Las opiniones normales aparecen directamente en sus respectivas publicaciones.</Empty>}
+                  {!reviewLoading && blockedReviews.map(review=>(
+                    <article key={review.id} className="p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <p className="font-black text-slate-900">{review.author}</p>
+                            <span className="text-amber-500">{'★'.repeat(Math.min(5,Math.max(1,review.rating)))}</span>
+                            <Pill color="red">Bloqueada</Pill>
                           </div>
-                        </article>
-                      ))
-                  )}
+                          <p className="mt-1 text-xs text-slate-500">Publicación: {review.propertyTitle} · {dateTime(review.date)}</p>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{review.comment}</p>
+                          <p className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+                            Motivo: {review.moderationReason||'Contenido señalado por las políticas del portal.'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+                            onClick={()=>openPropertyDetail(review.propertyId!)}>Ver publicación</button>
+                          <button type="button" className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700"
+                            onClick={()=>void resolveBlockedReview(review.id,'hide')}>Descartar caso</button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </section>
             )}
