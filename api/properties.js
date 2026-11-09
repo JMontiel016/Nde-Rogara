@@ -98,7 +98,8 @@ export default async function handler(req,res) {
       updatedAt:now};
     const batch=db.batch();batch.set(ref,record);
     const snap=await ref.collection('images').get();
-    for(const doc of snap.docs)batch.delete(doc.ref);
+    const currentIds=new Set(images.map(mediaKey));
+    for(const doc of snap.docs){if(!currentIds.has(doc.id))batch.delete(doc.ref);}
     for(let index=0;index<images.length;index++){
       const url=images[index];
       batch.set(ref.collection('images').doc(mediaKey(url)),{url,position:index,updatedAt:now});
