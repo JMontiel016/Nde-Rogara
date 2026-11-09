@@ -431,7 +431,7 @@ export const PlansPage: React.FC = () => {
                 <div className="grid gap-3">
                   <label className={labelClass}>Nombre completo *<input className={inputClass} value={billing.fullName} onChange={(event) => field('fullName', event.target.value)} autoComplete="name" placeholder="Nombre y apellido" /></label>
                   <label className={labelClass}>Correo para comprobantes *<input className={inputClass} value={billing.email} onChange={(event) => field('email', event.target.value)} type="email" autoComplete="email" placeholder="correo@dominio.com" /></label>
-                  <label className={labelClass}>Celular / WhatsApp *<input className={inputClass} value={billing.phone} onChange={(event) => field('phone', event.target.value)} autoComplete="tel" placeholder="Número de contacto" /></label>
+                  <label className={labelClass}>Celular / WhatsApp *<input className={inputClass} value={billing.phone} onChange={(event) => field('phone', event.target.value)} autoComplete="tel" placeholder="Ej.: 0981123456" inputMode="tel" /></label>
                 </div>
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div>
