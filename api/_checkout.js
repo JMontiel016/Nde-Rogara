@@ -32,7 +32,7 @@ function checkBuyer(raw) {
   const name=clean(b.fullName,100),taxName=clean(b.taxName,100),email=clean(b.email,180).toLowerCase();
   const docType=b.documentType==='ruc'?'ruc':'ci',ci=clean(b.ci,10),ruc=clean(b.ruc,10),dv=clean(b.rucDv,1);
   const customerRuc=docType==='ruc'?ruc+'-'+dv:ci;
-  if(name.length<4||taxName.length<3||!emailOK(email)||!/^\+?[0-9 ()-]{8,}$/.test(clean(b.phone,32)))
+  if(name.length<4||taxName.length<3||!emailOK(email)||(clean(b.phone,32)!=='' && !/^\+?[0-9 ()-]{8,}$/.test(clean(b.phone,32))))
     throw err(400,'Completá nombre, correo y datos del comprobante; el celular es opcional.');
   if(docType==='ruc' ? (!/^\d{3,9}$/.test(ruc)||!/^\d$/.test(dv)) : !/^\d{1,7}$/.test(ci))
     throw err(400,'Revisá el número de CI o RUC y su dígito verificador.');
