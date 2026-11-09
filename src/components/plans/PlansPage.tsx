@@ -78,6 +78,8 @@ export const PlansPage: React.FC = () => {
   const qrOrigin = window.location.origin;
   const [qrStatus, setQrStatus] = useState('');
   const confirmedRef = useRef(false);
+  // Reintentos de tarjeta reutilizan la misma referencia para no duplicar comprobantes.
+  const cardRequestIdRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pageNotice, setPageNotice] = useState('');
@@ -184,6 +186,10 @@ export const PlansPage: React.FC = () => {
         planId:plan.id,planName:plan.name,amount:plan.price,method:chosenMethod,billing:buyer,
         cardLast4:chosenMethod==='card'?(cardMode==='saved'?savedCard?.last4:cardNumber.replace(/\D/g,'').slice(-4)):undefined
       },'pending');
+      if(chosenMethod==='card'){
+        if(!cardRequestIdRef.current)cardRequestIdRef.current=request.id;
+        request.id=cardRequestIdRef.current;
+      }
       let invoice:FiscalInvoice,mail:{state:string;error?:string}|undefined=qrMail;
       if(chosenMethod==='qr') {
         if(!qrInvoice)throw new Error('El servidor todavía no confirmó el QR.');
@@ -194,17 +200,28 @@ export const PlansPage: React.FC = () => {
           body:JSON.stringify({planId:plan.id,billing:buyer,requestId:request.id})});
         const data:{invoice?:FiscalInvoice;mail?:{state:string;error?:string};error?:string}
           =await response.json().catch(()=>({}));
-        if(!response.ok||!data.invoice)throw new Error(data.error||'No se pudo registrar la contratación en el servidor.');
+        if(!response.ok||!data.invoice)throw new Error(data.error||'No se pudo registrar la contratación en el servidor. No vuelvas a generar el pago; podés reintentar con la misma referencia.');
         invoice=data.invoice;mail=data.mail;
       }
-      const completed=completeDemoPayment({...request,id:invoice.paymentId,ownerId:currentUser.id});
-      saveBillingProfile(currentUser.id,buyer);
-      saveConfirmedInvoice({...invoice,ownerId:currentUser.id});
-      simulatePlanActivation(currentUser.id,plan.id,billing.autoRenew);
-      preparePlanMail(completed,invoice);
+      // El servidor ya confirmó la operación. Un fallo en el almacenamiento del
+      // navegador NO debe convertirla falsamente en un pago rechazado.
+      const localWarnings:string[]=[];
+      try{
+        const completed=completeDemoPayment({...request,id:invoice.paymentId,ownerId:currentUser.id});
+        preparePlanMail(completed,invoice);
+      }catch(error){localWarnings.push('No se pudo guardar el historial local de pagos.');}
+      try{saveBillingProfile(currentUser.id,buyer);}
+      catch{localWarnings.push('No se pudieron guardar los datos locales de facturación.');}
+      try{saveConfirmedInvoice({...invoice,ownerId:currentUser.id});}
+      catch{localWarnings.push('El comprobante está en el servidor, pero no se pudo guardar en este navegador.');}
+      try{simulatePlanActivation(currentUser.id,plan.id,billing.autoRenew);}
+      catch{localWarnings.push('No se pudieron actualizar los beneficios locales del plan.');}
       if(chosenMethod==='card'&&cardMode==='once'&&rememberCard) {
-        saveDemoCardReference(currentUser.id,cardNumber.replace(/\D/g,'').slice(-4),demoCardBrand(cardNumber));
+        try{saveDemoCardReference(currentUser.id,cardNumber.replace(/\D/g,'').slice(-4),demoCardBrand(cardNumber));}
+        catch{localWarnings.push('No se pudieron recordar los últimos cuatro dígitos de la tarjeta de prueba.');}
       }
+      setPageNotice(localWarnings.join(' '));
+      cardRequestIdRef.current=null;
       setCardNumber('');setExpiry('');setSecurityCode('');setCardholder('');
       setReceiptPlanId(plan.id);setReceiptMethod(chosenMethod);
       setSuccessInvoice(invoice);setSelected(null);setShowPolicy(false);setQrSession(null);
