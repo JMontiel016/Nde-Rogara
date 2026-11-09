@@ -72,6 +72,10 @@ export const AuthModal: React.FC = () => {
       if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return; }
       if (!acceptedPolicy) { setError('Debés aceptar las políticas para crear una cuenta.'); return; }
     }
+    if (import.meta.env.PROD && !firebaseAuth.isConfigured()) {
+      setError('El servicio de cuentas no está disponible. Contactá al soporte de Nde Rogarã.');
+      return;
+    }
     setBusy(true);
     try {
       if (!registering && canUseLocalDevAdmin() && mail === LOCAL_DEV_ADMIN_EMAIL) {
