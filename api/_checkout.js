@@ -24,7 +24,9 @@ async function authenticated(firebase,req) {
   let user;
   try{user=await firebase.auth().verifyIdToken(token,true);}
   catch{throw err(401,'Tu sesión ha caducado. Volvé a iniciar sesión.');}
-  if(!user.email_verified || !emailOK(user.email||''))throw err(403,'Verificá tu correo en Firebase para continuar.');
+  // Contratación ficticia: Firebase confirma la identidad, pero la verificación
+  // del buzón no es un requisito para probar el plan sin cobrar fondos.
+  if(!emailOK(user.email||''))throw err(403,'Agregá un correo válido a tu cuenta de Firebase para continuar.');
   return user;
 }
 function checkBuyer(raw) {
