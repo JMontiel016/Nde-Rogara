@@ -239,14 +239,13 @@ export class FirebaseAuthService {
         provider.setCustomParameters({ prompt: 'select_account' });
         const result = await signInWithPopup(this.auth, provider);
         const token = await result.user.getIdToken();
-        const isAdmin = (await getIdTokenResult(result.user)).claims.admin === true;
 
         const user: FirebaseUser = {
           uid: result.user.uid,
           email: result.user.email,
           displayName: result.user.displayName || customName || 'Usuario Google',
           photoURL: result.user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-          role: preferredRole,
+          role: (await getIdTokenResult(result.user)).claims.admin === true ? 'admin' : preferredRole,
           organization: preferredRole === 'agency' ? (customOrg || result.user.displayName || undefined) : undefined,
           providerId: 'google.com',
           emailVerified: result.user.emailVerified,
@@ -275,6 +274,7 @@ export class FirebaseAuthService {
       try {
         const result = await signInWithEmailAndPassword(this.auth, email, pass);
         const token = await result.user.getIdToken();
+        const isAdmin = (await getIdTokenResult(result.user, true)).claims.admin === true;
 
         const user: FirebaseUser = {
           uid: result.user.uid,
