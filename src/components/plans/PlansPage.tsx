@@ -38,7 +38,7 @@ function formatDemoExpiry(value: string): string {
   const digits=value.replace(/\D/g,'').slice(0,4);
   return digits.length<=2 ? digits : `${digits.slice(0,2)}/${digits.slice(2)}`;
 }
-const emptyProfile: BillingProfile = { fullName: '', email: '', phone: '', invoiceRequested: false, taxName: '', ruc: '', address: '', autoRenew: false };
+const emptyProfile: BillingProfile = { fullName: '', email: '', phone: '', invoiceRequested: true, documentType: 'ci', taxName: '', ci: '', ruc: '', rucDv: '', address: '', autoRenew: false };
 
 type QrSession = { token: string; ownerId: string; reference: string };
 
@@ -86,6 +86,8 @@ export const PlansPage: React.FC = () => {
       fullName: profile.fullName || currentUser?.name || '',
       email: profile.email || currentUser?.email || '',
       phone: profile.phone || currentUser?.phone || '',
+      taxName: profile.taxName || currentUser?.name || '',
+      invoiceRequested: true,
     });
   }, [currentUser?.id, currentUser?.email, currentUser?.name, currentUser?.phone]);
 
@@ -168,7 +170,7 @@ export const PlansPage: React.FC = () => {
       const buyer = {
         ...billing,
         fullName: billing.fullName.trim(), email: billing.email.trim().toLowerCase(),
-        taxName: billing.taxName.trim(), ruc: billing.ruc.trim(),
+        taxName: billing.taxName.trim(), ci: billing.ci?.trim(), ruc: billing.ruc.trim(), rucDv: billing.rucDv?.trim(),
       };
       saveBillingProfile(currentUser.id, buyer);
       const payment = newPaymentRequest({
@@ -378,12 +380,47 @@ export const PlansPage: React.FC = () => {
                   <label className={labelClass}>Correo para comprobantes *<input className={inputClass} value={billing.email} onChange={(event) => field('email', event.target.value)} type="email" autoComplete="email" placeholder="correo@dominio.com" /></label>
                   <label className={labelClass}>Celular / WhatsApp *<input className={inputClass} value={billing.phone} onChange={(event) => field('phone', event.target.value)} autoComplete="tel" placeholder="Número de contacto" /></label>
                 </div>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4 accent-sky-600" checked={billing.invoiceRequested} onChange={(event) => field('invoiceRequested', event.target.checked)}/><span><strong>Factura con RUC</strong><small className="mt-1 block text-xs text-slate-500">Si no seleccionás esta opción, el comprobante se registra con tu nombre e identificación «X».</small></span></label>
-                {billing.invoiceRequested && <div className="grid gap-3 rounded-2xl bg-slate-50 p-3">
-                  <label className={labelClass}>Nombre / razón social *<input className={inputClass} value={billing.taxName} onChange={(event) => field('taxName', event.target.value)}/></label>
-                  <label className={labelClass}>RUC con dígito verificador *<input className={inputClass} value={billing.ruc} onChange={(event) => field('ruc', event.target.value)} placeholder="RUC"/></label>
-                  <label className={labelClass}>Dirección de facturación *<input className={inputClass} value={billing.address} onChange={(event) => field('address', event.target.value)}/></label>
-                </div>}
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">Datos para el comprobante</h4>
+                    <p className="mt-1 text-xs text-slate-500">Elegí cómo identificar al receptor. Por el momento se admite CI o RUC para el comprobante simulado.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de identificación para facturación">
+                    <button type="button" aria-pressed={(billing.documentType || 'ci') === 'ci'}
+                      onClick={() => field('documentType', 'ci')}
+                      className={`rounded-xl border px-3 py-3 text-left text-xs font-bold transition ${(billing.documentType || 'ci') === 'ci' ? 'border-sky-600 bg-sky-50 text-sky-800' : 'border-slate-200 bg-white text-slate-700 hover:border-sky-300'}`}>
+                      CI · No contribuyente
+                    </button>
+                    <button type="button" aria-pressed={billing.documentType === 'ruc'}
+                      onClick={() => field('documentType', 'ruc')}
+                      className={`rounded-xl border px-3 py-3 text-left text-xs font-bold transition ${billing.documentType === 'ruc' ? 'border-sky-600 bg-sky-50 text-sky-800' : 'border-slate-200 bg-white text-slate-700 hover:border-sky-300'}`}>
+                      RUC · Contribuyente
+                    </button>
+                  </div>
+                  <label className={labelClass}>Nombre / razón social *
+                    <input className={inputClass} value={billing.taxName}
+                      onChange={(event) => field('taxName', event.target.value)}
+                      autoComplete="name" placeholder="Nombre que figurará en el comprobante"/>
+                  </label>
+                  {(billing.documentType || 'ci') === 'ci' ? (
+                    <label className={labelClass}>Número de cédula de identidad (CI) *
+                      <input className={inputClass} value={billing.ci || ''} onChange={(event) => field('ci', event.target.value.replace(/\D/g, '').slice(0,10))}
+                        inputMode="numeric" autoComplete="off" placeholder="Ej.: 1234567"/>
+                    </label>
+                  ) : (
+                    <div className="grid grid-cols-[minmax(0,1fr)_90px] gap-3">
+                      <label className={labelClass}>Número de RUC *
+                        <input className={inputClass} value={billing.ruc} onChange={(event) => field('ruc', event.target.value.replace(/\D/g, '').slice(0,9))}
+                          inputMode="numeric" autoComplete="off" placeholder="Ej.: 80012345"/>
+                      </label>
+                      <label className={labelClass}>DV *
+                        <input className={inputClass} value={billing.rucDv || ''} onChange={(event) => field('rucDv', event.target.value.replace(/\D/g, '').slice(0,1))}
+                          inputMode="numeric" maxLength={1} autoComplete="off" placeholder="0"/>
+                      </label>
+                    </div>
+                  )}
+                  <p className="text-[11px] leading-5 text-slate-500">El nombre se completa desde tu perfil y podés cambiarlo. La dirección no es obligatoria. Este comprobante es ficticio y no tiene validez tributaria.</p>
+                </div>
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm"><input type="checkbox" checked={billing.autoRenew} onChange={(event) => field('autoRenew', event.target.checked)} className="mt-1 h-4 w-4 accent-sky-600"/><span><strong>Renovación automática</strong><small className="mt-1 block text-xs text-slate-500">Guardaremos tu preferencia para próximas renovaciones.</small></span></label>
                 <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
                   <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" checked={accepted} onChange={(event) => setAccepted(event.target.checked)}/><span>Leí y acepto las políticas de publicación, privacidad y contratación.</span></label>
