@@ -14,9 +14,9 @@ import {
   newPaymentRequest, savePaymentRequest, completeDemoPayment, validateDemoCard,
   saveDemoCardReference, readDemoSavedCard,
 } from '../../services/billing';
-import { createDemoInvoice, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
+import { saveConfirmedInvoice, viewFiscalInvoice, type FiscalInvoice } from '../../services/invoices';
 import { preparePlanMail } from '../../services/mailQueue';
-import { sendReceiptEmail } from '../../services/receiptDelivery';
+import { firebaseAuth } from '../../services/firebaseAuth';
 import { downloadQr, makeQrSvg } from '../../services/qrCode';
 
 const inputClass = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100';
@@ -75,7 +75,7 @@ export const PlansPage: React.FC = () => {
   const [cardholder, setCardholder] = useState('');
   const [rememberCard, setRememberCard] = useState(false);
   const [qrSession, setQrSession] = useState<QrSession | null>(null);
-  const [qrOrigin, setQrOrigin] = useState(() => window.location.origin);
+  const qrOrigin = window.location.origin;
   const [qrStatus, setQrStatus] = useState('');
   const confirmedRef = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -163,61 +163,61 @@ export const PlansPage: React.FC = () => {
     setMethod(next); setError(''); setQrSession(null); setQrStatus(''); confirmedRef.current = false;
   };
 
-  const deliverReceipt = async (invoice: FiscalInvoice, planId: string, method: 'card' | 'qr') => {
-    setReceiptStatus('sending');
-    setReceiptError('');
-    try {
-      await sendReceiptEmail(invoice, planId, method);
-      setReceiptStatus('sent');
-    } catch (cause) {
-      setReceiptStatus('failed');
-      setReceiptError(cause instanceof Error ? cause.message : 'No se pudo enviar el comprobante.');
-    }
-  };
-
-  const finishPayment = async (chosenMethod: PaymentMethod) => {
+  /** Estado y número generados por servidor: nunca asignar correlativo en el navegador. */
+  const finishPayment = async (chosenMethod: PaymentMethod,
+    qrInvoice?: FiscalInvoice, qrMail?: {state:string;error?:string}) => {
     if (!currentUser || !plan || !accepted || busy) return;
-    // Un QR ajeno nunca puede habilitar un plan en otra cuenta.
-    if (chosenMethod === 'qr' && (!qrSession || qrSession.ownerId !== currentUser.id)) {
-      setError('Este QR no corresponde a la cuenta actual. Generá uno nuevo.');
-      return;
+    if (chosenMethod==='qr' && (!qrSession || qrSession.ownerId!==currentUser.id)) {
+      setError('Este QR corresponde a otra cuenta.'); return;
     }
-    const issue = validateBilling(billing);
-    if (issue) { setError(issue); return; }
-    setBusy(true);
-    setError('');
-    try {
-      const buyer = {
-        ...billing,
-        fullName: billing.fullName.trim(), email: billing.email.trim().toLowerCase(),
-        taxName: billing.taxName.trim(), ci: billing.ci?.trim(), ruc: billing.ruc.trim(), rucDv: billing.rucDv?.trim(),
-        postalCode: chosenMethod === 'card' && cardMode === 'once' ? postalCode : billing.postalCode,
-      };
-      saveBillingProfile(currentUser.id, buyer);
-      const payment = newPaymentRequest({
-        ownerId: currentUser.id, ownerEmail: currentUser.email, planId: plan.id,
-        planName: plan.name, amount: plan.price, method: chosenMethod, billing: buyer,
-        cardLast4: chosenMethod === 'card' ? (cardMode === 'saved' ? savedCard?.last4 : cardNumber.replace(/\D/g, '').slice(-4)) : undefined,
-      }, 'pending');
-      savePaymentRequest(payment);
-      // La habilitación es únicamente un flujo local, sin cobro bancario.
-      const completed = completeDemoPayment(payment);
-      simulatePlanActivation(currentUser.id, plan.id, billing.autoRenew);
-      const invoice = createDemoInvoice(completed);
-      // El aviso queda como borrador para administración; solo SMTP confirma envío real.
-      preparePlanMail(completed, invoice);
-      if (chosenMethod === 'card' && cardMode === 'once' && rememberCard) {
-        saveDemoCardReference(currentUser.id, cardNumber.replace(/\D/g, '').slice(-4), demoCardBrand(cardNumber));
+    const issue=validateBilling(billing);
+    if(issue){setError(issue);return;}
+    setBusy(true);setError('');
+    try{
+      const buyer={...billing,fullName:billing.fullName.trim(),
+        email:billing.email.trim().toLowerCase(),taxName:billing.taxName.trim(),
+        ci:billing.ci?.trim(),ruc:billing.ruc.trim(),rucDv:billing.rucDv?.trim(),
+        postalCode:chosenMethod==='card'&&cardMode==='once'?postalCode:billing.postalCode};
+      const token=await firebaseAuth.getFreshIdToken();
+      if(!token)throw new Error('Iniciá sesión en Firebase para registrar la contratación.');
+      const request=newPaymentRequest({ownerId:currentUser.id,ownerEmail:currentUser.email,
+        planId:plan.id,planName:plan.name,amount:plan.price,method:chosenMethod,billing:buyer,
+        cardLast4:chosenMethod==='card'?(cardMode==='saved'?savedCard?.last4:cardNumber.replace(/\D/g,'').slice(-4)):undefined
+      },'pending');
+      let invoice:FiscalInvoice,mail:{state:string;error?:string}|undefined=qrMail;
+      if(chosenMethod==='qr') {
+        if(!qrInvoice)throw new Error('El servidor todavía no confirmó el QR.');
+        invoice=qrInvoice;
+      } else {
+        const response=await fetch('/api/checkout/card',{
+          method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+          body:JSON.stringify({planId:plan.id,billing:buyer,requestId:request.id})});
+        const data:{invoice?:FiscalInvoice;mail?:{state:string;error?:string};error?:string}
+          =await response.json().catch(()=>({}));
+        if(!response.ok||!data.invoice)throw new Error(data.error||'No se pudo registrar la contratación en el servidor.');
+        invoice=data.invoice;mail=data.mail;
       }
-      // Limpiar inmediatamente las entradas sensibles tras la operación.
-      setCardNumber(''); setExpiry(''); setSecurityCode(''); setCardholder('');
-      setReceiptPlanId(plan.id); setReceiptMethod(chosenMethod);
-      setSuccessInvoice(invoice); setSelected(null); setShowPolicy(false); setQrSession(null); setRevision((v) => v + 1);
-      // Envío automático: jamás se marca como enviado sin confirmación de SMTP.
-      await deliverReceipt(invoice, plan.id, chosenMethod);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo registrar la contratación.');
-    } finally { setBusy(false); }
+      const completed=completeDemoPayment({...request,id:invoice.paymentId,ownerId:currentUser.id});
+      saveBillingProfile(currentUser.id,buyer);
+      saveConfirmedInvoice({...invoice,ownerId:currentUser.id});
+      simulatePlanActivation(currentUser.id,plan.id,billing.autoRenew);
+      preparePlanMail(completed,invoice);
+      if(chosenMethod==='card'&&cardMode==='once'&&rememberCard) {
+        saveDemoCardReference(currentUser.id,cardNumber.replace(/\D/g,'').slice(-4),demoCardBrand(cardNumber));
+      }
+      setCardNumber('');setExpiry('');setSecurityCode('');setCardholder('');
+      setReceiptPlanId(plan.id);setReceiptMethod(chosenMethod);
+      setSuccessInvoice(invoice);setSelected(null);setShowPolicy(false);setQrSession(null);
+      setRevision(v=>v+1);
+      if(mail?.state==='accepted')setReceiptStatus('sent');
+      else {
+        setReceiptStatus('failed');
+        setReceiptError(mail?.error||'No hay confirmación SMTP. El administrador puede verificar y reenviar el PDF desde Facturas.');
+      }
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'No se pudo registrar la contratación.');
+      if(chosenMethod==='qr')confirmedRef.current=false;
+    }finally{setBusy(false);}
   };
 
   const payCard = () => {
@@ -236,58 +236,53 @@ export const PlansPage: React.FC = () => {
   };
 
   const generateQr = async () => {
-    if (!accepted) { setError('Aceptá las políticas de contratación para generar el QR.'); return; }
-    if (!currentUser || !plan) { setError('Ingresá como propietario para generar tu QR.'); return; }
-    const issue = validateBilling(billing);
-    if (issue) { setError(issue); return; }
-    setError(''); setBusy(true);
-    try {
-      const response = await fetch(`/api/checkout?plan=${encodeURIComponent(plan.id)}`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'X-Checkout-Owner': currentUser.id },
-        cache: 'no-store',
-      });
-      if (!response.ok) throw new Error('No se pudo generar un enlace de pago.');
-      const data: { token: string; reference: string } = await response.json();
-      // Cada respuesta del servidor corresponde a un nuevo intento de pago.
-      setQrSession({ token: data.token, ownerId: currentUser.id, reference: data.reference });
-      setQrStatus('Esperando confirmación desde el enlace del QR…');
-      confirmedRef.current = false;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'El servicio de confirmación no está disponible.');
-    } finally { setBusy(false); }
+    if(!accepted){setError('Aceptá las políticas de contratación antes de generar el QR.');return;}
+    if(!currentUser||!plan){setError('Ingresá como propietario.');return;}
+    const issue=validateBilling(billing);
+    if(issue){setError(issue);return;}
+    setError('');setBusy(true);
+    try{
+      const token=await firebaseAuth.getFreshIdToken();
+      if(!token)throw new Error('Iniciá sesión en Firebase para generar el QR.');
+      const response=await fetch('/api/checkout',{
+        method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+        body:JSON.stringify({planId:plan.id,billing})});
+      const data:{token?:string;reference?:string;error?:string}=await response.json().catch(()=>({}));
+      if(!response.ok||!data.token)throw new Error(data.error||'No se pudo generar el enlace QR.');
+      setQrSession({token:data.token,ownerId:currentUser.id,reference:data.reference||''});
+      setQrStatus('Esperando que se presione Pagar desde otro dispositivo…');
+      confirmedRef.current=false;
+    }catch(cause){setError(cause instanceof Error?cause.message:'No se pudo generar el código QR.');}
+    finally{setBusy(false);}
   };
 
-  // El teléfono confirma en el servidor local; esta pestaña detecta el cambio.
-  useEffect(() => {
-    if (!qrSession || !selected || method !== 'qr' || !currentUser) return;
-    if (qrSession.ownerId !== currentUser.id) {
-      setQrSession(null);
-      setQrStatus('La cuenta cambió. Generá un nuevo código QR.');
-      return;
+  // Consultar solamente mientras exista una contratación QR activa.
+  useEffect(()=>{
+    if(!qrSession||!selected||method!=='qr'||!currentUser)return;
+    if(qrSession.ownerId!==currentUser.id){
+      setQrSession(null);setQrStatus('Este QR corresponde a otra cuenta.');return;
     }
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const response = await fetch(`/api/checkout/status/${encodeURIComponent(qrSession.token)}`, {
-          cache: 'no-store', headers: { 'X-Checkout-Owner': currentUser.id },
-        });
-        if (!response.ok) throw new Error('El enlace expiró. Generá otro QR.');
-        const data: { state: string } = await response.json();
-        if (data.state === 'confirmed' && !cancelled && !confirmedRef.current) {
-          if (!accepted) { setQrStatus('Aceptá las políticas de contratación para continuar.'); return; }
-          const issue = validateBilling(billing);
-          if (issue) { setError(issue); return; }
-          confirmedRef.current = true;
-          void finishPayment('qr');
+    let cancelled=false;
+    const check=async()=>{
+      if(confirmedRef.current)return;
+      try{
+        const token=await firebaseAuth.getFreshIdToken();
+        if(!token)throw new Error('La sesión venció. Volvé a ingresar.');
+        const response=await fetch('/api/checkout/status/'+encodeURIComponent(qrSession.token),{
+          headers:{Authorization:'Bearer '+token},cache:'no-store'});
+        const data:{state?:string;invoice?:FiscalInvoice;mail?:{state:string;error?:string};error?:string}
+          =await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.error||'No se pudo verificar el estado del QR.');
+        if(data.state==='confirmed'&&data.invoice&&!cancelled&&!confirmedRef.current){
+          confirmedRef.current=true;
+          void finishPayment('qr',data.invoice,data.mail);
         }
-      } catch (cause) {
-        if (!cancelled) setQrStatus(cause instanceof Error ? cause.message : 'No se pudo consultar el estado del QR.');
-      }
+      }catch(cause){if(!cancelled)setQrStatus(cause instanceof Error?cause.message:'Error al consultar el QR.');}
     };
-    const interval = window.setInterval(() => { void check(); }, 1800);
-    return () => { cancelled = true; window.clearInterval(interval); };
-  }, [qrSession, selected, method, accepted, billing, currentUser?.id]);
+    void check();
+    const interval=window.setInterval(()=>void check(),2000);
+    return ()=>{cancelled=true;window.clearInterval(interval);};
+  },[qrSession,selected,method,accepted,billing,currentUser?.id,busy]);
 
   // El cupo y los beneficios se detallan directamente dentro de cada tarjeta del plan.
   const planDescription=(p:PublicationPlan)=>p.photoMode==='pooled' ? `${p.maxPhotos} fotos compartidas entre todos tus inmuebles` : `${p.maxPhotos} fotos por publicación`;
@@ -403,13 +398,13 @@ export const PlansPage: React.FC = () => {
                   <p className="text-xs leading-5 text-slate-600">Generá el QR, descargalo o escanealo con tu teléfono. El enlace permitirá confirmar la solicitud de contratación.</p>
                   {!qrSession ? <button type="button" disabled={busy} onClick={() => void generateQr()} className="w-full rounded-xl bg-sky-600 px-4 py-3 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50">{busy ? 'Generando…' : 'Generar código QR'}</button> : <>
                     <div className="mx-auto w-48 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">{qrImage && <img className="aspect-square w-full" src={qrImage} alt="Código QR de confirmación de contratación"/>}</div>
-                    <label className="block text-xs font-bold text-slate-700">Dirección de acceso desde el celular<input className={inputClass} value={qrOrigin} onChange={(event) => setQrOrigin(event.target.value)} inputMode="url" placeholder="http://192.168.1.10:5173"/></label>
-                    {['localhost','127.0.0.1'].includes(new URL(window.location.href).hostname) && <p className="text-[11px] leading-5 text-slate-600">Si escaneás desde otro dispositivo, reemplazá localhost por la dirección de red que muestra Vite al iniciar el proyecto.</p>}
+                    <p className="break-all rounded-xl bg-white p-3 text-[11px] text-slate-700">Enlace único: {qrLink}</p>
+                    {['localhost','127.0.0.1'].includes(new URL(window.location.href).hostname) && <p className="text-[11px] leading-5 text-slate-600">Desde dispositivos externos utilizá la web pública de Nde Rogarã. El código vence a los 15 minutos.</p>}
                     <div className="grid grid-cols-2 gap-2">
                       <button type="button" disabled={!qrLink} onClick={() => qrLink && downloadQr(qrLink, `NdeRogara-${plan.id}-QR.svg`)} className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-3 text-xs font-bold text-sky-800 disabled:opacity-50"><Download size={16}/> Descargar QR</button>
                       <button type="button" disabled={!qrLink} onClick={() => void navigator.clipboard.writeText(qrLink).then(() => setQrStatus('Enlace copiado.')).catch(() => setQrStatus('No se pudo copiar el enlace.'))} className="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-3 text-xs font-bold text-sky-800 disabled:opacity-50"><Copy size={16}/> Copiar enlace</button>
                     </div>
-                    <a href={qrLink || undefined} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-xs font-semibold text-sky-700 hover:underline"><ExternalLink size={14}/> Abrir enlace de confirmación</a>
+                    <a href={qrLink || undefined} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 text-xs font-semibold text-sky-700 hover:underline"><ExternalLink size={14}/> Abrir enlace de pago</a>
                     <div aria-live="polite" className="rounded-xl bg-white p-3 text-xs font-semibold text-slate-700">{qrStatus}</div><button type="button" disabled={busy} onClick={() => void generateQr()} className="text-xs font-bold text-sky-700 hover:underline disabled:opacity-50">Generar un nuevo QR</button>
                   </>}
                 </section>}
@@ -534,7 +529,7 @@ export const PlansPage: React.FC = () => {
             : receiptStatus === 'failed' ? `No se pudo enviar el comprobante: ${receiptError}`
             : 'Preparando el envío del comprobante…'}
           {receiptStatus === 'failed' && <button type="button" className="mt-2 block font-bold underline"
-            onClick={() => void deliverReceipt(successInvoice, receiptPlanId, receiptMethod)}>Reintentar envío del comprobante</button>}
+            onClick={() => setCurrentView('landlord-rentals')}>Consultar a administración</button>}
         </div>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button type="button" onClick={() => { void viewFiscalInvoice(successInvoice.id).catch((cause) => setPageNotice(cause instanceof Error ? cause.message : 'No se pudo abrir el comprobante.')); }} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold hover:bg-slate-50">Ver comprobante</button>
