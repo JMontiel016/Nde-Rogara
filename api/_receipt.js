@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import PDFDocument from 'pdfkit';
 import { getAdmin, defaults, transport } from './_mail.js';
 
-const allowedPlans = new Map([
+export const allowedPlans = new Map([
   ['basic', { name: 'Básico mensual', amount: 50000 }],
   ['quarterly', { name: 'Trimestral', amount: 135000 }],
   ['premium', { name: 'Premium anual', amount: 450000 }],
@@ -21,7 +21,7 @@ const money = n => new Intl.NumberFormat('es-PY').format(n);
 const errorJson = (res, code, error, detail) => res.status(code).json({ error, ...(detail ? { code: detail } : {}) });
 const time = () => new Date().toISOString();
 
-function makePdf(invoice, plan, docNumber, to) {
+export function makePdf(invoice, plan, docNumber, to) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 44, info: {
       Title: 'Comprobante de contratación Nde Rogarã',
