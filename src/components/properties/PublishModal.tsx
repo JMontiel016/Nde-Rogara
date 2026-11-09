@@ -147,6 +147,7 @@ export const PublishModal: React.FC = () => {
   const [reviewPending, setReviewPending] = useState(false);
   const autoNearbyRef = useRef<string[]>([]);
   const locationSectionRef = useRef<HTMLElement | null>(null);
+  const pendingMediaDeletes = useRef<Array<{kind:'image'|'video';url:string}>>([]);
 
   const plan = effectiveOwnerPlan(currentUser?.id);
   const mediaUsage = ownerMediaUsage(properties, currentUser, editingProperty?.id);
@@ -208,6 +209,7 @@ export const PublishModal: React.FC = () => {
     setDiscountPercent(previous?.discountPercent || 0);
     setAddressResults([]); setAddressError(''); setNearbyError(''); setDetectedNearby([]);
     setPhotoAlert(''); setPhotoInfo(''); setSaveError(''); setSuccess(false); setReviewPending(false);
+    pendingMediaDeletes.current=[];
     autoNearbyRef.current = [];
   }, [isPublishModalOpen, editingProperty?.id]);
 
@@ -322,16 +324,67 @@ export const PublishModal: React.FC = () => {
     setMediaProgress(0);setUploadingVideo(false);
   };
 
-  // Permitir borrar una imagen o video antes de publicar y al editar.
-  // Storage solo permite borrar objetos del usuario que los subió.
-  const removeMedia = async (kind:'image'|'video',value:string)=>{
+  // No destruir archivos existentes antes de guardar: Cancelar conserva la edición anterior.
+  const removeMedia = async (kind:'image'|'video', value:string) => {
     setSaveError('');
-    try{
-      if(kind==='video' && isStoredLocalVideo(value))await removeLocalVideo(value);
-      else await deletePropertyMedia(value);
-      if(kind==='image')setImages(prev=>prev.filter(x=>x!==value));
-      else setVideos(prev=>prev.filter(x=>x!==value));
-    }catch(error){setSaveError(error instanceof Error?error.message:'No se pudo eliminar el archivo.');}
+    if(editingProperty && (kind==='image' ? editingProperty.images?.includes(value) : editingProperty.videos?.includes(value))) {
+      pendingMediaDeletes.current.push({kind,url:value});
+    } else {
+      try {
+        if(kind==='video' && isStoredLocalVideo(value)) await removeLocalVideo(value);
+        else await deletePropertyMedia(value);
+      } catch(error) {
+        setSaveError(error instanceof Error?error.message:'No se pudo eliminar el archivo.');
+        return;
+      }
+    }
+    if(kind==='image')setImages(prev=>prev.filter(x=>x!==value));
+    else setVideos(prev=>prev.filter(x=>x!==value));
+  };
+
+  // Selector conjunto con cupos individuales y fallos informados por archivo.
+  const handleMixedMedia = async (event:React.ChangeEvent<HTMLInputElement>) => {
+    const selected=Array.from(event.target.files||[]);
+    event.currentTarget.value='';
+    if(!selected.length||checkingPhotos||uploadingVideo)return;
+    const photos=selected.filter(file=>file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name));
+    const clips=selected.filter(file=>file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name));
+    const unknown=selected.filter(file=>!photos.includes(file)&&!clips.includes(file));
+    setSaveError('');setPhotoAlert('');setPhotoInfo('');
+    if(images.length+photos.length>planMaxPhotos || videos.length+clips.length>planMaxVideos) {
+      setSaveError('Los archivos seleccionados superan el cupo de fotografías o videos de tu plan.');
+      return;
+    }
+    setCheckingPhotos(true);setUploadingVideo(true);setMediaProgress(0);
+    let acceptedPhotos=0,acceptedVideos=0;
+    const problems:string[]=unknown.map(file=>file.name+': formato no compatible.');
+    try {
+      for(const file of photos) {
+        try {
+          const result=await submitPhotoForModeration(file,setMediaProgress);
+          if(result.approved && result.url) {
+            setImages(prev=>[...prev,result.url]);acceptedPhotos++;
+          } else problems.push(file.name+': '+(result.reason||'Formato no permitido.'));
+        }catch(error) {
+          problems.push(file.name+': '+(error instanceof Error?error.message:'No se pudo leer la fotografía.'));
+        }
+      }
+      for(const file of clips) {
+        try {
+          const seconds=await videoDuration(file);
+          if(seconds>MAX_VIDEO_SECONDS)throw new Error('Máximo 40 segundos por video.');
+          let reference:string;
+          if(import.meta.env.VITE_MEDIA_STORAGE_MODE==='firebase') {
+            reference=await uploadPropertyMedia(file,'video',setMediaProgress);
+          } else reference=await storeLocalVideo(file);
+          setVideos(prev=>[...prev,reference]);acceptedVideos++;
+        }catch(error){
+          problems.push(file.name+': '+(error instanceof Error?error.message:'No se pudo guardar el video.'));
+        }
+      }
+      if(acceptedPhotos||acceptedVideos) setPhotoInfo('Se agregaron '+acceptedPhotos+' fotografía(s) y '+acceptedVideos+' video(s). Elegí la portada y guardá la publicación.');
+      if(problems.length) setPhotoAlert(problems.join(' | '));
+    }finally{setCheckingPhotos(false);setUploadingVideo(false);setMediaProgress(0);}
   };
 
   const close = () => { setIsPublishModalOpen(false); setEditingProperty(null); };
@@ -402,12 +455,24 @@ export const PublishModal: React.FC = () => {
       requiresActivePlan: editingProperty?.requiresActivePlan ?? (userRole !== 'admin'),
       createdAt: editingProperty?.createdAt || new Date().toISOString(),
     };
-    // Una opinión limpia de texto se aprueba sola; si hay imágenes/videos aún
-    // se requiere revisión visual, pues el filtro textual no revisa fotos.
+    // Cambiar portada o datos de un aviso aprobado no debe ocultarlo de Inicio.
+    // Una imagen o video nuevo sí requiere inspección visual.
     const reason=evaluateListing(data);
-    setReviewPending(Boolean(reason || images.length || videos.length));
+    const addedMedia=Boolean(editingProperty &&
+      (images.some(url=>!editingProperty.images.includes(url)) ||
+       videos.some(url=>!(editingProperty.videos||[]).includes(url))));
+    const reviewRequired=editingProperty
+      ? Boolean(reason || addedMedia || editingProperty.moderationStatus==='flagged')
+      : Boolean(reason || images.length || videos.length);
+    setReviewPending(reviewRequired);
     try {
       if (editingProperty) updateProperty(data); else addProperty(data);
+      const removed=pendingMediaDeletes.current.splice(0);
+      for(const file of removed) {
+        void (file.kind==='video'&&isStoredLocalVideo(file.url)
+          ? removeLocalVideo(file.url) : deletePropertyMedia(file.url))
+          .catch(error=>console.warn('No se pudo limpiar un archivo descartado:',error));
+      }
       setSuccess(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el aviso. Revisá el almacenamiento disponible.');
@@ -542,11 +607,21 @@ export const PublishModal: React.FC = () => {
 
       <section className={sectionClass}>
         <BlockTitle number="4" icon={ImagePlus} title="Fotografías y recorridos en video" description="Los cupos se calculan automáticamente según el plan contratado y tus publicaciones existentes." />
-        <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-sky-200 bg-sky-50 p-4"><Camera size={22} className="text-sky-700" /><p className="mt-2 text-sm font-bold">Fotografías · {images.length} de {planMaxPhotos}</p><p className="mt-1 text-xs text-slate-600">JPG, PNG o WEBP · hasta 50 MB por imagen. La primera foto será la portada.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir fotografías<input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={checkingPhotos || images.length >= planMaxPhotos} onChange={event => void handlePhotos(event)} className="hidden" /></label>{checkingPhotos && <p className="mt-2 text-xs text-sky-700">Subiendo imágenes… {mediaProgress}%</p>}</div>
+        <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-sky-200 bg-sky-50 p-4"><Camera size={22} className="text-sky-700" /><p className="mt-2 text-sm font-bold">Fotografías · {images.length} de {planMaxPhotos}</p><p className="mt-1 text-xs text-slate-600">JPG, PNG o WEBP · hasta 50 MB por imagen. La primera foto será la portada; podés seleccionar otra.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir fotografías<input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={checkingPhotos || images.length >= planMaxPhotos} onChange={event => void handlePhotos(event)} className="hidden" /></label>{checkingPhotos && <p className="mt-2 text-xs text-sky-700">Subiendo imágenes… {mediaProgress}%</p>}</div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><Video size={22} className="text-slate-700" /><p className="mt-2 text-sm font-bold">Videos · {videos.length} de {planMaxVideos}</p><p className="mt-1 text-xs text-slate-600">MP4 o WebM · hasta {import.meta.env.VITE_MEDIA_STORAGE_MODE === 'firebase' ? Math.round(MAX_VIDEO_BYTES / (1024 * 1024)) : 50} MB y {MAX_VIDEO_SECONDS} segundos por video.</p><label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"><Upload size={16} />Subir videos<input type="file" multiple accept="video/mp4,video/webm" disabled={uploadingVideo || videos.length >= planMaxVideos} onChange={event => void handleVideos(event)} className="hidden" /></label>{uploadingVideo && <p className="mt-2 text-xs text-slate-600">Subiendo videos… {mediaProgress}%</p>}</div></div>
+        <div className="rounded-2xl border border-dashed border-sky-300 bg-sky-50/60 p-4">
+          <p className="text-sm font-black text-slate-900">Subir fotografías y videos juntos</p>
+          <p className="mt-1 text-xs text-slate-600">Podés seleccionar ambos tipos en una sola carga. La primera imagen queda de portada, pero podés elegir otra.</p>
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-700 px-4 py-2.5 text-sm font-bold text-white">
+            <Upload size={16}/> Agregar fotos y videos
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+              disabled={checkingPhotos||uploadingVideo} onChange={event=>void handleMixedMedia(event)} className="hidden"/>
+          </label>
+          {(checkingPhotos||uploadingVideo)&&<p role="status" className="mt-2 text-xs font-semibold text-sky-700">Procesando archivos… {mediaProgress}%</p>}
+        </div>
         {photoAlert && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800">{photoAlert}</p>}
         {photoInfo && <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-semibold text-sky-800">{photoInfo}</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((src, index) => <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200"><a href={src} target="_blank" rel="noopener noreferrer" title="Ver fotografía en tamaño completo"><img src={src} alt={`Foto ${index + 1}`} className="aspect-video w-full object-cover hover:opacity-90" /></a><div className="flex flex-wrap items-center justify-between gap-1 p-2 text-xs"><span>{index === 0 ? 'Portada' : `Foto ${index + 1}`}</span><div className="flex gap-1">{index > 0 && <button type="button" onClick={() => setImages(prev => [prev[index], ...prev.filter((_, i) => i !== index)])} className="rounded border px-1.5 py-1" title="Hacer portada">★</button>}<button type="button" onClick={() => void removeMedia('image',src)} title="Eliminar foto" className="text-rose-700"><Trash2 size={16} /></button></div></div></div>)}</div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((src, index) => <div key={`${src}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200"><a href={src} target="_blank" rel="noopener noreferrer" title="Ver fotografía en tamaño completo"><img src={src} alt={`Foto ${index + 1}`} className="aspect-video w-full object-cover hover:opacity-90" /></a><div className="flex flex-wrap items-center justify-between gap-1 p-2 text-xs"><span>{index === 0 ? '★ Portada principal' : `Foto ${index + 1}`}</span><div className="flex gap-1">{index > 0 && <button type="button" onClick={() => setImages(prev => [prev[index], ...prev.filter((_, i) => i !== index)])} className="rounded border border-sky-200 bg-sky-50 px-2 py-1 font-bold text-sky-700" title="Elegir como foto principal">Elegir portada</button>}<button type="button" onClick={() => void removeMedia('image',src)} title="Eliminar foto" className="text-rose-700"><Trash2 size={16} /></button></div></div></div>)}</div>
         {videos.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Videos cargados</p>{videos.map((reference, index) => <div key={reference} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span>Recorrido {index + 1}</span><button type="button" onClick={() => void removeMedia('video',reference)} className="flex items-center gap-1 text-rose-700"><Trash2 size={15} />Quitar</button></div>)}</div>}
         {videos.length > 0 && <LocalVideoGallery videos={videos} />}
         <p className="text-xs text-slate-500">En el modo gratuito, los videos se guardan en este navegador. Podés verlos o eliminarlos, pero todavía no se comparten entre dispositivos.</p>
