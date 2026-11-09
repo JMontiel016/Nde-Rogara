@@ -56,6 +56,14 @@ export async function fetchMyFiscalInvoices(ownerId:string):Promise<FiscalInvoic
   if(!response.ok)throw new Error(data.error||'No se pudieron consultar tus comprobantes.');
   const remote=data.invoices||[];
   const ids=new Set(remote.map(inv=>inv.paymentId));
+  // Guardar una copia silenciosa para que «Ver comprobante» encuentre también
+  // los PDF de contrataciones efectuadas en otro teléfono, sin bucle de eventos.
+  try {
+    const known=getLocalInvoices();
+    const cached=new Set(known.map(inv=>inv.paymentId));
+    const fresh=remote.filter(inv=>!cached.has(inv.paymentId));
+    if(fresh.length)localStorage.setItem(STORAGE,JSON.stringify([...fresh,...known]));
+  }catch{/* La copia es opcional: Firestore mantiene los registros. */}
   return [...remote,...local.filter(inv=>!ids.has(inv.paymentId))]
     .sort((a,b)=>String(b.issueDate||'').localeCompare(String(a.issueDate||'')));
 }
