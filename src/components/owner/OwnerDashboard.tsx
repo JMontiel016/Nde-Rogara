@@ -6,6 +6,9 @@ import { effectiveOwnerPlan, ownerHasProperty, readOwnerPlan, ownerMediaUsage, c
 import { socialShareLinks } from '../../services/socialLinks';
 import { formatGs } from '../../utils/formatters';
 import { getLocalMetrics } from '../../services/localMetrics';
+import { getLocalInvoices, viewFiscalInvoice, INVOICES_CHANGED, type FiscalInvoice } from '../../services/invoices';
+import { getPayments } from '../../services/billing';
+import { sendReceiptEmail } from '../../services/receiptDelivery';
 import { PrivateDocumentRecord, listPrivateDocuments, storePrivateDocument, removePrivateDocument, downloadPrivateDocument } from '../../services/privateDocuments';
 
 export const OwnerDashboard: React.FC = () => {
@@ -15,9 +18,15 @@ export const OwnerDashboard: React.FC = () => {
   const [docError, setDocError] = useState('');
   const [planVersion, setPlanVersion] = useState(0);
   const [message,setMessage] = useState('');
+  const [invoiceRevision,setInvoiceRevision] = useState(0);
+  const [receiptBusy,setReceiptBusy] = useState('');
+  const [receiptNotice,setReceiptNotice] = useState('');
+  useEffect(() => { const refresh = () => setInvoiceRevision(v=>v+1); window.addEventListener(INVOICES_CHANGED, refresh); return ()=>window.removeEventListener(INVOICES_CHANGED,refresh); }, []);
   useEffect(() => { const cb = () => setPlanVersion(v => v + 1); window.addEventListener('nderogara-plan-updated', cb); return () => window.removeEventListener('nderogara-plan-updated', cb); }, []);
   const plan = effectiveOwnerPlan(currentUser?.id);
   const selection = readOwnerPlan(currentUser?.id);
+  const myInvoices = getLocalInvoices().filter(inv=>inv.ownerId===currentUser?.id);
+  void invoiceRevision;
   void planVersion;
   if (!currentUser || (userRole !== 'landlord' && userRole !== 'admin')) return <div className="max-w-xl mx-auto p-8">Iniciá sesión como propietario para administrar tus publicaciones.</div>;
   const myProperties = properties.filter(p => ownerHasProperty(p, currentUser));
@@ -47,8 +56,29 @@ export const OwnerDashboard: React.FC = () => {
     }
     togglePropertyStatus(p.id);
   };
+  const sendAgain = async (invoice: FiscalInvoice) => {
+    const payment = getPayments().find(p=>p.id===invoice.paymentId && p.ownerId===currentUser.id);
+    if (!payment) { setReceiptNotice('No se encontró la contratación asociada a este comprobante en este navegador.'); return; }
+    setReceiptBusy(invoice.id); setReceiptNotice('Enviando comprobante…');
+    try {
+      await sendReceiptEmail(invoice, payment.planId, payment.method);
+      setReceiptNotice(`El servidor aceptó el comprobante ${invoice.documentNumber} para ${invoice.customerEmail}.`);
+    } catch(err) { setReceiptNotice(err instanceof Error ? err.message : 'No se pudo enviar el comprobante.'); }
+    finally { setReceiptBusy(''); }
+  };
   return <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 pb-20 space-y-7">
     <div className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center"><div><h1 className="text-3xl font-black text-slate-900">Mis publicaciones</h1><p className="text-sm text-slate-500 mt-1">Administrá tus avisos, fotos, disponibilidad y documentos privados.</p></div><button onClick={() => plan || userRole === 'admin' ? setIsPublishModalOpen(true) : setCurrentView('plans')} className="rounded-xl bg-brand-600 text-white px-5 py-3 font-bold text-sm flex items-center gap-2 justify-center"><Plus className="w-4 h-4" />Nuevo inmueble</button></div>
+    {myInvoices.length > 0 && <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+      <div><h2 className="text-base font-black text-slate-900">Mis comprobantes</h2><p className="mt-1 text-xs text-slate-500">Consultá tus comprobantes locales o solicitá el envío de su PDF por correo. Los envíos se registran en el servidor.</p></div>
+      {receiptNotice && <p className="rounded-xl bg-sky-50 p-3 text-xs text-sky-900" role="status">{receiptNotice}</p>}
+      <div className="space-y-2">{myInvoices.slice(0,10).map(invoice=><div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
+        <div><p className="text-sm font-bold">{invoice.documentNumber} · {invoice.planName}</p><p className="text-xs text-slate-500">{invoice.customerEmail} · {formatGs(invoice.amount)}</p></div>
+        <div className="flex gap-2">
+          <button type="button" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold" onClick={()=>void viewFiscalInvoice(invoice.id).catch(e=>setReceiptNotice(e instanceof Error?e.message:'No se pudo abrir.'))}>Ver comprobante</button>
+          <button type="button" disabled={!!receiptBusy} className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" onClick={()=>void sendAgain(invoice)}>{receiptBusy===invoice.id?'Enviando…':'Enviar PDF por correo'}</button>
+        </div>
+      </div>)}</div>
+    </section>}
     <section className="grid sm:grid-cols-3 gap-3"><div className="bg-white rounded-2xl p-5 border border-slate-200"><div className="text-xs text-slate-500">Inmuebles cargados</div><strong className="text-2xl">{myProperties.length}</strong></div><div className="bg-white rounded-2xl p-5 border border-slate-200"><div className="text-xs text-slate-500">Avisos visibles</div><strong className="text-2xl">{activeCount}</strong></div><div className="bg-white rounded-2xl p-5 border border-slate-200"><div className="text-xs text-slate-500">Plan de publicación</div><strong className="block text-lg">{plan?.name || (userRole === 'admin' ? 'Administrador' : 'Sin plan vigente')}</strong>{plan && <p className="text-xs mt-1 text-slate-500">{activeCount} de {plan.maxActive} avisos activos · {media.photos} foto(s) · {media.videos} video(s)</p>}</div></section>
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center"><div className="text-sm text-amber-900"><strong>Estado de tu suscripción.</strong> {selection ? `Vigente hasta ${new Date(selection.expiresAt).toLocaleDateString('es-PY')}.` : 'Todavía no seleccionaste un plan.'} <span className="text-xs text-amber-800">Demostración local, sin cobros bancarios.</span></div><button className="shrink-0 border border-amber-400 rounded-xl px-4 py-2 text-xs font-bold text-amber-900" onClick={() => setCurrentView('plans')}>Ver planes</button></div>
     {message && <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-sky-800">{message}<button onClick={()=>setMessage('')} className="ml-3 text-xs underline">Cerrar</button></div>}
