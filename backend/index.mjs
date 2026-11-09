@@ -24,7 +24,7 @@ const likelihood = {UNKNOWN:0,VERY_UNLIKELY:1,UNLIKELY:2,POSSIBLE:3,LIKELY:4,VER
 const level = value => likelihood[value] ?? 0;
 const cors = (req,res,next)=>{
   const origin=req.get('origin');
-  if(origin && origins.has(origin)){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','POST, OPTIONS');}
+  if(origin && origins.has(origin)){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','GET, POST, PUT, OPTIONS');}
   if(req.method==='OPTIONS')return res.status(origins.has(origin)?204:403).end();
   if(origin&&!origins.has(origin))return res.status(403).json({approved:false,reason:'Origen no autorizado.'});
   next();
