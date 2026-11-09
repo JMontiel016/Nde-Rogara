@@ -166,8 +166,11 @@ export function validateDemoCard(number:string,expiration:string,cvv:string):str
   if(!match)return 'Ingresá el vencimiento en formato MM/AA (mes válido).';
   const end=new Date(2000+Number(match[2]),Number(match[1]),0,23,59,59);
   if(end.getTime()<Date.now())return 'La fecha de vencimiento debe ser posterior al mes actual.';
-  if(!new RegExp(amex?'^\\d{4}
-
+  if(amex ? !/^\d{4}$/.test(cvv) : !/^\d{3}$/.test(cvv)) return amex
+    ? 'American Express requiere 4 dígitos de seguridad.'
+    : 'El código de seguridad debe tener 3 dígitos.';
+  return null;
+}
 
 /**
  * Validación de formato exclusivamente en memoria, sin procesar fondos ni
