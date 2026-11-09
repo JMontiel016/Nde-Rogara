@@ -448,8 +448,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Sincroniza avisos compartidos al abrir la web, cambiar de cuenta y mientras
   // esté abierto el panel. Cada cuenta conserva sus borradores locales previos.
   useEffect(() => {
-    let active=true;
+    let active=true, migrated=false;
     const scope=userRole==='admin'?'admin':currentUser?'mine':'public';
+    const initialLocal=properties.filter(p=>currentUser && p.ownerId===currentUser.id && p.id.startsWith('prop-'));
     const sync=async()=>{
       try{
         const remote=await fetchCloudProperties(scope);
@@ -457,16 +458,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setProperties(previous=>{
           const keys=new Set(remote.map(p=>p.id));
           const merged=[...remote,...previous.filter(p=>!keys.has(p.id))];
-          try{persistPropertyList(merged);}catch{/* Catálogo remoto permanece visible aunque falte espacio local. */}
+          try{persistPropertyList(merged);}catch{/* Catálogo remoto permanece disponible aunque el navegador no tenga espacio. */}
           return merged;
         });
+        // Recuperar avisos creados antes de habilitar Firestore, solo del titular
+        // autenticado. Nunca migrar un aviso ajeno usando permisos de admin.
+        if(!migrated && currentUser && scope!=='public'){
+          migrated=true;
+          const known=new Set(remote.map(p=>p.id));
+          const missing=initialLocal.filter(p=>!known.has(p.id));
+          for(const old of missing) {
+            if(!active)break;
+            try{
+              const saved=await saveCloudProperty(old);
+              if(active)setProperties(previous=>previous.map(p=>p.id===saved.id?saved:p));
+            }catch(error){if(import.meta.env.DEV)console.warn('No se pudo migrar aviso local:',error);}
+          }
+        }
       }catch(error){
-        // Mantener anuncios del navegador si falla la red; nunca borrarlos por 503.
+        // No borrar publicaciones locales si Firestore está momentáneamente caído.
         if(import.meta.env.DEV)console.warn('Catálogo remoto no disponible:',error);
       }
     };
     void sync();
-    const interval=window.setInterval(()=>{if(!document.hidden)void sync();},30000);
+    const interval=window.setInterval(()=>{if(!document.hidden)void sync();},scope==='public'?45000:15000);
     return ()=>{active=false;window.clearInterval(interval);};
   },[currentUser?.id,userRole]);
 
