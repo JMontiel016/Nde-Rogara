@@ -195,7 +195,7 @@ export const PlansPage: React.FC = () => {
         if(!qrInvoice)throw new Error('El servidor todavía no confirmó el QR.');
         invoice=qrInvoice;
       } else {
-        const response=await fetch('/api/checkout/card',{
+        const response=await fetch('/api/checkout?operation=card',{
           method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
           body:JSON.stringify({planId:plan.id,billing:buyer,requestId:request.id})});
         const data:{invoice?:FiscalInvoice;mail?:{state:string;error?:string};error?:string}
@@ -285,7 +285,7 @@ export const PlansPage: React.FC = () => {
       try{
         const token=await firebaseAuth.getFreshIdToken();
         if(!token)throw new Error('La sesión venció. Volvé a ingresar.');
-        const response=await fetch('/api/checkout/status/'+encodeURIComponent(qrSession.token),{
+        const response=await fetch('/api/checkout?operation=status&token='+encodeURIComponent(qrSession.token),{
           headers:{Authorization:'Bearer '+token},cache:'no-store'});
         const data:{state?:string;invoice?:FiscalInvoice;mail?:{state:string;error?:string};error?:string}
           =await response.json().catch(()=>({}));
