@@ -403,7 +403,7 @@ export const PlansPage: React.FC = () => {
                     <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-sky-600" checked={rememberCard} onChange={(event) => setRememberCard(event.target.checked)}/><span>Recordar la tarjeta para una próxima contratación (solo sus últimos cuatro dígitos).</span></label>
                   </> : <>
                     <p className="rounded-xl bg-sky-50 p-3 text-sm font-semibold text-sky-900">{savedCard?.brand} •••• {savedCard?.last4}</p>
-                    <label className={labelClass}>Código de seguridad *<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
+                    <label className={labelClass}>Código de seguridad (opcional)<input className={inputClass} value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" autoComplete="off" placeholder="CVV"/></label>
                   </>}
                   <div className="grid grid-cols-2 gap-3">
                     <label className={labelClass}>Código postal (opcional)
