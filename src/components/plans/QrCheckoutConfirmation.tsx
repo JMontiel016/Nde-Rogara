@@ -9,7 +9,7 @@ export const QrCheckoutConfirmation: React.FC<{ token: string; ownerId?: string 
   const [details, setDetails] = useState<{planName: string; amount: number} | null>(null);
 
   useEffect(() => {
-    fetch(`/api/checkout/status/${encodeURIComponent(token)}`, {
+    fetch(`/api/checkout?operation=status&token=${encodeURIComponent(token)}`, {
       cache: 'no-store',
       headers: ownerId ? { 'X-Checkout-Owner': ownerId } : {},
     })
@@ -22,7 +22,7 @@ export const QrCheckoutConfirmation: React.FC<{ token: string; ownerId?: string 
     setLoading(true);
     setNotice('');
     try {
-      const response = await fetch(`/api/checkout/confirm/${encodeURIComponent(token)}`, {
+      const response = await fetch(`/api/checkout?operation=confirm&token=${encodeURIComponent(token)}`, {
         method: 'POST', headers: ownerId ? { 'X-Checkout-Owner': ownerId } : {},
       });
       if (!response.ok) throw new Error(response.status === 403 ? 'Este QR pertenece a otra cuenta.' : 'No se pudo registrar la confirmación.');
