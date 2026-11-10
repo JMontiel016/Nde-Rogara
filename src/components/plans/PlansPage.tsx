@@ -368,6 +368,12 @@ export const PlansPage: React.FC = () => {
                 </div>
 
                 {method === 'card' ? <section className="space-y-4 rounded-2xl border border-slate-200 p-4">
+                  <p className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-xs font-semibold text-sky-900">
+                    Para esta contratación de prueba, completá los datos del comprador, aceptá las políticas y confirmá. No hace falta ingresar una tarjeta.
+                  </p>
+                  <details className="group rounded-xl border border-slate-200 bg-white p-3">
+                    <summary className="cursor-pointer text-xs font-bold text-slate-700">Opcional: mostrar datos de tarjeta ficticia</summary>
+                    <div className="mt-3 space-y-3">
                   <div className="flex flex-wrap gap-2 text-xs font-semibold">
                     <button type="button" className={`rounded-xl px-3 py-2 ${cardMode === 'once' ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`} onClick={() => { setCardMode('once'); setSecurityCode(''); }}>Tarjeta de prueba</button>
                     <button type="button" disabled={!savedCard} className={`rounded-xl px-3 py-2 disabled:opacity-40 ${cardMode === 'saved' ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`} onClick={() => { setCardMode('saved'); setSecurityCode(''); }}>Guardada {savedCard ? `•••• ${savedCard.last4}` : ''}</button>
@@ -405,7 +411,9 @@ export const PlansPage: React.FC = () => {
                     </label>
                     <div className="flex items-end pb-2 text-[11px] leading-4 text-slate-500">No es necesario para confirmar el plan de demostración.</div>
                   </div>
-                  <p className="text-[11px] leading-5 text-slate-500">Datos de tarjeta opcionales y exclusivamente ficticios. No ingreses números reales. No hay cobros ni se transmite información de tarjeta al servidor.</p>
+                    </div>
+                  </details>
+                  <p className="text-[11px] leading-5 text-slate-500">Sin cobro bancario. La contratación se registrará con tu nombre, correo y CI o RUC.</p>
                 </section> : <section className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
                   <h4 className="font-black text-slate-900">Pago mediante código QR</h4>
                   <p className="text-xs leading-5 text-slate-600">Generá el QR, descargalo o escanealo con tu teléfono. El enlace permitirá confirmar la solicitud de contratación.</p>
